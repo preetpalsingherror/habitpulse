@@ -1,5 +1,9 @@
 {
   "appId": "com.habitpulse.warriorapp",
   "appName": "HabitPulse",
-  "webDir": "dist"
+  "webDir": "dist",
+  "server": {
+    "url": "https://preetpalsingherror.github.io/habitpulse/",
+    "cleartext": true
+  }
 }
