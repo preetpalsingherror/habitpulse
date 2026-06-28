@@ -76,10 +76,36 @@ export const computeLevelFromXP = (totalXP) => {
   const xpNeededForNextLevel = 100;
   const progressPercentage = (xpInCurrentLevel / xpNeededForNextLevel) * 100;
 
+  // Compute Hunter Rank details
+  let rank = "E-Rank";
+  let rankGlow = "rank-e-glow";
+
+  if (level >= 30) {
+    rank = "Shadow Monarch";
+    rankGlow = "rank-monarch-glow";
+  } else if (level >= 25) {
+    rank = "S-Rank";
+    rankGlow = "rank-s-glow";
+  } else if (level >= 20) {
+    rank = "A-Rank";
+    rankGlow = "rank-a-glow";
+  } else if (level >= 15) {
+    rank = "B-Rank";
+    rankGlow = "rank-b-glow";
+  } else if (level >= 10) {
+    rank = "C-Rank";
+    rankGlow = "rank-c-glow";
+  } else if (level >= 5) {
+    rank = "D-Rank";
+    rankGlow = "rank-d-glow";
+  }
+
   return {
     level,
     xpInCurrentLevel,
     progressPercentage,
+    rank,
+    rankGlow
   };
 };
 

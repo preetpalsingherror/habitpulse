@@ -1,106 +1,273 @@
-export default function Header({ user, loginWithGoogle, logoutUser, isAuthLoading, characterStats }) {
-  const { level, currentXp, xpNeeded, title, rankGlow } = characterStats || {
+import { useState } from 'react';
+
+export default function Header({ 
+  user, 
+  loginWithGoogle, 
+  logoutUser, 
+  isAuthLoading, 
+  characterStats, 
+  stats, 
+  statPoints, 
+  allocateStatPoint 
+}) {
+  const [showStatus, setShowStatus] = useState(false);
+
+  const { level, xpInCurrentLevel, progressPercentage, rank, rankGlow } = characterStats || {
     level: 1,
-    currentXp: 0,
-    xpNeeded: 100,
-    title: 'Wandering Novice',
-    rankGlow: 'wandering-novice-glow'
+    xpInCurrentLevel: 0,
+    progressPercentage: 0,
+    rank: 'E-Rank',
+    rankGlow: 'rank-e-glow'
   };
 
+  const { strength, agility, intelligence, vitality, sense } = stats || {
+    strength: 10,
+    agility: 10,
+    intelligence: 10,
+    vitality: 10,
+    sense: 10
+  };
+
+  // Solo Leveling standard values computed from stats
+  const maxHp = 100 + vitality * 15;
+  const maxMp = 50 + intelligence * 10;
+
   return (
-    <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 pb-6 border-b border-zinc-800/80 relative">
+    <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 pb-6 border-b border-zinc-800/80 relative z-40">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase font-mono">
-            ⚡ UPLIFE // HUD
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 bg-clip-text text-transparent uppercase font-mono">
+            ⚡ UPLIFE // SYSTEM
           </h1>
-          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold tracking-wider rounded bg-zinc-900 border border-emerald-500/30 text-emerald-400 uppercase">
-            <span className="live-pulse-dot"></span> Core System Online
+          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold tracking-wider rounded bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 uppercase">
+            <span className="live-pulse-dot bg-cyan-400"></span> System Active
           </span>
         </div>
         <p className="text-xs text-zinc-500 mt-1.5 font-mono uppercase tracking-wide">
-          Cybernetic performance tracking, granular telemetry & experience progression.
+          Sole Survivor Integration Interface & Shadow Monarch Gate Key.
         </p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col md:flex-row items-end md:items-center gap-4 relative">
         {isAuthLoading ? (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-zinc-900/60 border border-zinc-800 text-zinc-500 text-[10px] font-mono uppercase">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-700 animate-pulse"></span>
-            Syncing Telemetry...
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+            Syncing Hunter Rank...
           </div>
         ) : user ? (
-          /* Character Telemetry Panel with rank-based dynamic neon glow */
-          <div className={`flex items-center gap-4 bg-zinc-950/60 border border-zinc-800 p-2.5 pr-4 rounded-xl transition-all duration-500 ${rankGlow}`}>
-            <div className="relative">
-              {user.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={user.displayName || "Avatar"}
-                  className="w-10 h-10 rounded-lg object-cover border border-zinc-700 relative z-10"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-lg bg-zinc-900 text-zinc-400 border border-zinc-700 flex items-center justify-center text-sm font-bold relative z-10 font-mono">
-                  {user.displayName ? user.displayName.charAt(0) : "U"}
-                </div>
-              )}
-              {/* Level indicator badge overlay */}
-              <div className="absolute -bottom-1.5 -right-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 text-[8px] font-extrabold px-1 rounded z-20 font-mono">
-                L{level}
-              </div>
-            </div>
-            
-            <div className="flex flex-col text-left min-w-[140px] space-y-1">
-              <div className="flex items-center justify-between gap-2 leading-none">
-                <span className="text-xs font-bold text-zinc-200 truncate max-w-[100px] font-mono">
-                  {user.displayName || "User"}
-                </span>
-                <span className="text-[8px] text-zinc-500 font-mono uppercase tracking-wider">
-                  {currentXp}/{xpNeeded} XP
-                </span>
-              </div>
-              
-              {/* Telemetry rank title */}
-              <span className={`text-[8px] font-extrabold uppercase tracking-widest leading-none ${
-                level >= 26 ? 'text-amber-400' : level >= 13 ? 'text-fuchsia-400' : level >= 6 ? 'text-cyan-400' : 'text-emerald-400'
-              }`}>
-                ⚔️ {title}
-              </span>
-              
-              {/* Experience Progress Bar */}
-              <div className="w-full h-1 bg-zinc-900 border border-zinc-850 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    level >= 26 ? 'bg-gradient-to-r from-pink-500 to-amber-500' : level >= 13 ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500' : level >= 6 ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-                  }`}
-                  style={{ width: `${(currentXp / xpNeeded) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="w-px h-8 bg-zinc-800 mx-1"></div>
-            
+          <div className="flex items-center gap-3">
+            {/* STATUS WINDOW BUTTON */}
             <button
-              onClick={logoutUser}
-              className="text-[10px] font-mono font-bold text-zinc-500 hover:text-red-400 transition cursor-pointer uppercase tracking-wider"
+              onClick={() => setShowStatus(!showStatus)}
+              className={`px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-lg border transition cursor-pointer ${
+                showStatus 
+                  ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.2)]'
+                  : 'bg-zinc-900 border-zinc-800 text-cyan-400 hover:border-cyan-500/40'
+              }`}
             >
-              Sign Out
+              📊 Status Window
             </button>
+
+            {/* Hunter Profile Card with rank glow */}
+            <div className={`flex items-center gap-3 bg-zinc-950/60 border p-2 rounded-xl transition-all duration-500 ${rankGlow}`}>
+              <div className="relative">
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || "Hunter"}
+                    className="w-9 h-9 rounded-lg object-cover border border-zinc-700 relative z-10"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg bg-zinc-900 text-zinc-400 border border-zinc-700 flex items-center justify-center text-sm font-bold relative z-10 font-mono">
+                    {user.displayName ? user.displayName.charAt(0) : "H"}
+                  </div>
+                )}
+                <div className="absolute -bottom-1 -right-1 bg-cyan-950 border border-cyan-500/50 text-cyan-300 text-[7px] font-extrabold px-1 rounded z-20 font-mono">
+                  L{level}
+                </div>
+              </div>
+              
+              <div className="flex flex-col text-left min-w-[120px] space-y-0.5">
+                <span className="text-[10px] font-bold text-zinc-200 truncate max-w-[100px] font-mono leading-none">
+                  {user.displayName || "Hunter"}
+                </span>
+                <span className={`text-[8px] font-extrabold uppercase tracking-wider leading-none ${
+                  rank === 'Shadow Monarch' ? 'text-purple-400' : 'text-cyan-400'
+                }`}>
+                  {rank}
+                </span>
+                {/* Exp bar */}
+                <div className="w-full h-1 bg-zinc-900 border border-zinc-850 rounded-full overflow-hidden mt-1">
+                  <div 
+                    className="h-full bg-cyan-400 rounded-full transition-all duration-500"
+                    style={{ width: `${progressPercentage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="w-px h-6 bg-zinc-800 mx-1"></div>
+              
+              <button
+                onClick={logoutUser}
+                className="text-[9px] font-mono font-bold text-zinc-500 hover:text-red-400 transition cursor-pointer uppercase"
+              >
+                Exit
+              </button>
+            </div>
           </div>
         ) : (
-          /* Sign In Button */
           <button
             onClick={loginWithGoogle}
-            className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold font-mono uppercase rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition cursor-pointer active:scale-95 shadow-md"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold font-mono uppercase rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition cursor-pointer active:scale-95 shadow-md"
           >
-            Authenticate Link
+            ⚠️ Synchronize Keys
           </button>
         )}
 
-        <span className="hidden sm:inline-flex px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded-xl bg-zinc-900/60 border border-zinc-800 text-zinc-500 items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Local Interlock
-        </span>
+        {/* Floating Holographic Status Board Modal */}
+        {user && showStatus && (
+          <div className="absolute top-16 right-0 w-80 bg-zinc-950/95 border-2 border-cyan-400/80 rounded-2xl p-6 backdrop-blur-lg shadow-[0_0_25px_rgba(34,211,238,0.25)] text-left z-50 system-hologram animate-fade-in">
+            <div className="system-scanline"></div>
+            
+            {/* System Window Header */}
+            <div className="border-b border-cyan-500/30 pb-3 mb-4 flex items-center justify-between">
+              <span className="text-xs font-mono font-extrabold tracking-widest text-cyan-400 uppercase">
+                [ STATUS WINDOW ]
+              </span>
+              <button 
+                onClick={() => setShowStatus(false)}
+                className="text-zinc-500 hover:text-cyan-400 text-xs font-mono cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Hunter Information */}
+            <div className="space-y-1.5 text-xs font-mono mb-4 pb-3 border-b border-cyan-500/20">
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">Name:</span>
+                <span className="text-zinc-100 font-bold">{user.displayName || "Unknown"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">Rank:</span>
+                <span className="text-cyan-300 font-extrabold uppercase">{rank}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">Level:</span>
+                <span className="text-cyan-400 font-extrabold">{level}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">HP:</span>
+                <span className="text-emerald-400 font-bold">{maxHp} / {maxHp}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">MP:</span>
+                <span className="text-blue-400 font-bold">{maxMp} / {maxMp}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400 uppercase">Fatigue:</span>
+                <span className="text-yellow-500 font-bold">0</span>
+              </div>
+            </div>
+
+            {/* Stat Allocation Panel */}
+            <div className="space-y-3 font-mono">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                  Ability Stats
+                </span>
+                {statPoints > 0 && (
+                  <span className="text-[9px] bg-red-500/20 border border-red-500/40 text-red-400 font-extrabold px-1.5 py-0.5 rounded animate-pulse">
+                    {statPoints} Points Available
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {/* Strength */}
+                <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-900 p-2 rounded-lg">
+                  <span className="text-xs text-zinc-300 uppercase">Strength (STR):</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{strength}</span>
+                    {statPoints > 0 && (
+                      <button
+                        onClick={() => allocateStatPoint('strength')}
+                        className="w-4 h-4 flex items-center justify-center bg-cyan-500 hover:bg-cyan-400 active:scale-90 text-zinc-950 font-extrabold text-xs rounded transition cursor-pointer"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Agility */}
+                <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-900 p-2 rounded-lg">
+                  <span className="text-xs text-zinc-300 uppercase">Agility (AGI):</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{agility}</span>
+                    {statPoints > 0 && (
+                      <button
+                        onClick={() => allocateStatPoint('agility')}
+                        className="w-4 h-4 flex items-center justify-center bg-cyan-500 hover:bg-cyan-400 active:scale-90 text-zinc-950 font-extrabold text-xs rounded transition cursor-pointer"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Intelligence */}
+                <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-900 p-2 rounded-lg">
+                  <span className="text-xs text-zinc-300 uppercase">Intelligence (INT):</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{intelligence}</span>
+                    {statPoints > 0 && (
+                      <button
+                        onClick={() => allocateStatPoint('intelligence')}
+                        className="w-4 h-4 flex items-center justify-center bg-cyan-500 hover:bg-cyan-400 active:scale-90 text-zinc-950 font-extrabold text-xs rounded transition cursor-pointer"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Vitality */}
+                <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-900 p-2 rounded-lg">
+                  <span className="text-xs text-zinc-300 uppercase">Vitality (VIT):</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{vitality}</span>
+                    {statPoints > 0 && (
+                      <button
+                        onClick={() => allocateStatPoint('vitality')}
+                        className="w-4 h-4 flex items-center justify-center bg-cyan-500 hover:bg-cyan-400 active:scale-90 text-zinc-950 font-extrabold text-xs rounded transition cursor-pointer"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sense */}
+                <div className="flex items-center justify-between bg-zinc-900/40 border border-zinc-900 p-2 rounded-lg">
+                  <span className="text-xs text-zinc-300 uppercase">Sense (SEN):</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{sense}</span>
+                    {statPoints > 0 && (
+                      <button
+                        onClick={() => allocateStatPoint('sense')}
+                        className="w-4 h-4 flex items-center justify-center bg-cyan-500 hover:bg-cyan-400 active:scale-90 text-zinc-950 font-extrabold text-xs rounded transition cursor-pointer"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

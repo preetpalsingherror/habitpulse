@@ -33,16 +33,9 @@ export const useGamifiedState = (trackerData, customHabits) => {
     // 3. Resolve RPG level boundaries from the cumulative XP pool
     const levelTelemetry = computeLevelFromXP(cumulativeXP);
 
-    // 4. Map dynamic warrior tier designations
-    let warriorTitle = "Wandering Novice";
-    if (levelTelemetry.level >= 26) warriorTitle = "Algorithm Sovereign";
-    else if (levelTelemetry.level >= 13) warriorTitle = "Shadow Cyber-Monk";
-    else if (levelTelemetry.level >= 6) warriorTitle = "Code Vanguard";
-
     return {
       totalXP: cumulativeXP,
       ...levelTelemetry,
-      warriorTitle,
       habitMetrics
     };
   }, [trackerData, customHabits]);

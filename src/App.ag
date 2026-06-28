@@ -10,7 +10,7 @@ import {
   signInWithCredential,
   GoogleAuthProvider
 } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc, increment } from "firebase/firestore";
 import { auth, db, googleProvider, isFirebaseEnabled } from "./firebase";
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -18,8 +18,10 @@ import Header from './components/Header';
 import Calendar from './components/Calendar';
 import Analytics from './components/Analytics';
 import Checklist from './components/Checklist';
+import ShadowArmy from './components/ShadowArmy';
 import { useGamifiedState } from './utils/useGamifiedState';
 import { computeLevelFromXP } from './utils/gamificationEngine';
+import { playSound } from './utils/audioHelper';
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -42,6 +44,39 @@ export default function App() {
   const [isFocusActive, setIsFocusActive] = useState(false);
   const [focusTimeLeft, setFocusTimeLeft] = useState(1500); // 25 minutes in seconds
   const [focusBreached, setFocusBreached] = useState(false);
+
+  // Solo Leveling Hunter stats & status indicators
+  const [stats, setStats] = useState(() => {
+    const saved = localStorage.getItem('uplife_hunter_stats');
+    return saved ? JSON.parse(saved) : { strength: 10, agility: 10, intelligence: 10, vitality: 10, sense: 10 };
+  });
+
+  const [statPoints, setStatPoints] = useState(() => {
+    const saved = localStorage.getItem('uplife_hunter_stat_points');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const [lastAllocatedLevel, setLastAllocatedLevel] = useState(() => {
+    const saved = localStorage.getItem('uplife_last_allocated_level');
+    return saved ? parseInt(saved, 10) : 1;
+  });
+
+  const [isPenaltyActive, setIsPenaltyActive] = useState(() => {
+    return localStorage.getItem('uplife_penalty_active') === 'true';
+  });
+
+  const [penaltyTimeLeft, setPenaltyTimeLeft] = useState(600); // 10 minutes (600s)
+
+  // Gate Dungeon & Shadow Army states
+  const [gateRank, setGateRank] = useState('E');
+  const [bossHp, setBossHp] = useState(100);
+  const [bossMaxHp, setBossMaxHp] = useState(100);
+  const [playerHp, setPlayerHp] = useState(100);
+  const [showAriseTrigger, setShowAriseTrigger] = useState(false);
+  const [shadows, setShadows] = useState(() => {
+    const saved = localStorage.getItem('uplife_shadow_army');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // Dynamic dashboard themes: 'emerald', 'purple', 'blue'
   const [theme, setTheme] = useState(() => {
@@ -100,6 +135,26 @@ export default function App() {
     localStorage.setItem('ag_unclaimed_chests', JSON.stringify(unclaimedChests));
   }, [unclaimedChests]);
 
+  useEffect(() => {
+    localStorage.setItem('uplife_hunter_stats', JSON.stringify(stats));
+  }, [stats]);
+
+  useEffect(() => {
+    localStorage.setItem('uplife_hunter_stat_points', statPoints.toString());
+  }, [statPoints]);
+
+  useEffect(() => {
+    localStorage.setItem('uplife_last_allocated_level', lastAllocatedLevel.toString());
+  }, [lastAllocatedLevel]);
+
+  useEffect(() => {
+    localStorage.setItem('uplife_penalty_active', isPenaltyActive ? 'true' : 'false');
+  }, [isPenaltyActive]);
+
+  useEffect(() => {
+    localStorage.setItem('uplife_shadow_army', JSON.stringify(shadows));
+  }, [shadows]);
+
   // Auth State Listener
   useEffect(() => {
     if (!isFirebaseEnabled) return;
@@ -124,6 +179,13 @@ export default function App() {
         if (data.rpgBonusXp !== undefined) setRpgBonusXp(data.rpgBonusXp);
         if (data.claimedMilestones) setClaimedMilestones(data.claimedMilestones);
         if (data.unclaimedChests) setUnclaimedChests(data.unclaimedChests);
+        if (data.stats) setStats(data.stats);
+        if (data.statPoints !== undefined) setStatPoints(data.statPoints);
+        if (data.lastAllocatedLevel !== undefined) setLastAllocatedLevel(data.lastAllocatedLevel);
+        if (data.shadows) {
+          setShadows(data.shadows);
+          localStorage.setItem('uplife_shadow_army', JSON.stringify(data.shadows));
+        }
       } else {
         // Doc doesn't exist, initialize Firestore with current local state
         setDoc(userDocRef, {
@@ -132,7 +194,11 @@ export default function App() {
           theme: theme,
           rpgBonusXp: rpgBonusXp,
           claimedMilestones: claimedMilestones,
-          unclaimedChests: unclaimedChests
+          unclaimedChests: unclaimedChests,
+          stats: stats,
+          statPoints: statPoints,
+          lastAllocatedLevel: lastAllocatedLevel,
+          shadows: shadows
         });
       }
     }, (err) => {
@@ -153,28 +219,143 @@ export default function App() {
     const finalXp = Math.max(0, derivedTelemetry.totalXP + rpgBonusXp);
     const levelInfo = computeLevelFromXP(finalXp);
     
-    let title = 'Wandering Novice';
-    let rankGlow = 'wandering-novice-glow';
-    if (levelInfo.level >= 26) {
-      title = 'Algorithm Sovereign';
-      rankGlow = 'algorithm-sovereign-glow';
-    } else if (levelInfo.level >= 13) {
-      title = 'Shadow Cyber-Monk';
-      rankGlow = 'shadow-cybermonk-glow';
-    } else if (levelInfo.level >= 6) {
-      title = 'Code Vanguard';
-      rankGlow = 'code-vanguard-glow';
-    }
-
     return { 
       level: levelInfo.level, 
-      currentXp: levelInfo.xpInCurrentLevel, 
-      xpNeeded: 100, 
-      title, 
-      rankGlow,
+      xpInCurrentLevel: levelInfo.xpInCurrentLevel, 
+      progressPercentage: levelInfo.progressPercentage,
+      rank: levelInfo.rank, 
+      rankGlow: levelInfo.rankGlow,
       totalXp: finalXp
     };
   }, [derivedTelemetry.totalXP, rpgBonusXp]);
+
+  // Level up trigger to award stat points
+  useEffect(() => {
+    if (characterStats.level > lastAllocatedLevel) {
+      const diff = characterStats.level - lastAllocatedLevel;
+      const pointsToAdd = diff * 5;
+      setStatPoints(prev => prev + pointsToAdd);
+      setLastAllocatedLevel(characterStats.level);
+      
+      playSound('level-up');
+
+      if (user) {
+        updateDoc(doc(db, "users", user.uid), {
+          statPoints: increment(pointsToAdd),
+          lastAllocatedLevel: characterStats.level
+        }).catch(err => console.error("Error updating stats:", err));
+      }
+    }
+  }, [characterStats.level, lastAllocatedLevel, user]);
+
+  // Stat point allocation logic
+  const allocateStatPoint = (statName) => {
+    if (statPoints <= 0) return;
+    const newStats = {
+      ...stats,
+      [statName]: stats[statName] + 1
+    };
+    setStats(newStats);
+    setStatPoints(prev => prev - 1);
+    
+    playSound('pop');
+
+    if (user) {
+      updateDoc(doc(db, "users", user.uid), {
+        stats: newStats,
+        statPoints: increment(-1)
+      }).catch(err => console.error("Error updating stats:", err));
+    }
+  };
+
+  // Shadow extraction command (ARISE)
+  const summonShadow = (rank) => {
+    let name = "Shadow Goblin";
+    let icon = "👾";
+    let multiplier = 5;
+
+    if (rank === 'S') { name = "Blood-Red Commander Igris"; icon = "👑"; multiplier = 50; }
+    else if (rank === 'A') { name = "High Mage Tusk"; icon = "🔮"; multiplier = 30; }
+    else if (rank === 'B') { name = "Tanker Iron"; icon = "🛡️"; multiplier = 20; }
+    else if (rank === 'C') { name = "Shadow Knight"; icon = "⚔️"; multiplier = 15; }
+    else if (rank === 'D') { name = "Shadow Orc Warrior"; icon = "👺"; multiplier = 10; }
+
+    if (shadows.some(s => s.name === name)) {
+      alert(`[SYSTEM: ${name} is already part of your Shadow Army!]`);
+      return;
+    }
+
+    const newShadow = {
+      id: Date.now().toString(),
+      name,
+      icon,
+      multiplier,
+      rank: `${rank}-Rank`
+    };
+
+    const updatedShadows = [...shadows, newShadow];
+    setShadows(updatedShadows);
+    setShowAriseTrigger(false);
+    setIsFocusActive(false);
+    
+    playSound('arise');
+
+    const bonusXp = rank === 'S' ? 300 : rank === 'A' ? 200 : rank === 'B' ? 150 : rank === 'C' ? 100 : rank === 'D' ? 50 : 25;
+    setRpgBonusXp(prev => prev + bonusXp);
+
+    if (user) {
+      updateDoc(doc(db, "users", user.uid), {
+        shadows: updatedShadows,
+        rpgBonusXp: increment(bonusXp)
+      }).catch(err => console.error("Error saving shadow:", err));
+    }
+  };
+
+  // Evaluates if user slackered yesterday (0 habits checked off)
+  useEffect(() => {
+    if (customHabits.length === 0 || Object.keys(trackerData).length === 0) return;
+    
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    const lastEvaluated = localStorage.getItem('uplife_last_penalty_evaluated');
+    if (lastEvaluated === yesterdayStr) return;
+
+    const yesterdayData = trackerData[yesterdayStr] || {};
+    const completedCount = customHabits.filter(h => yesterdayData[h.id] === true).length;
+
+    if (completedCount === 0) {
+      setIsPenaltyActive(true);
+      setPenaltyTimeLeft(600); // Reset timer
+      localStorage.setItem('uplife_penalty_active', 'true');
+      playSound('penalty');
+    }
+
+    localStorage.setItem('uplife_last_penalty_evaluated', yesterdayStr);
+  }, [trackerData, customHabits]);
+
+  // Penalty countdown interval
+  useEffect(() => {
+    if (!isPenaltyActive) return;
+    
+    const interval = setInterval(() => {
+      setPenaltyTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setIsPenaltyActive(false);
+          localStorage.removeItem('uplife_penalty_active');
+          // Award survival XP bonus!
+          setRpgBonusXp(x => x + 100);
+          playSound('level-up');
+          return 600;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isPenaltyActive]);
 
   // Dynamic 7-day Streak Reward Checker
   useEffect(() => {
@@ -241,46 +422,53 @@ export default function App() {
     }
   }, [trackerData, allHabits, todayStr]);
 
-  // Focus Chamber Timer Countdown Loop
+  // Focus Chamber Timer Countdown Loop (Boss Gate Combat)
   useEffect(() => {
     if (!isFocusActive) return;
     if (focusTimeLeft <= 0) {
-      setIsFocusActive(false);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-      setRpgBonusXp(prev => prev + 50); // Award XP on success
-      alert("Focus Session Complete! Core Telemetry rewarded with +50 XP!");
+      // Gate cleared! Trigger the shadow extraction (ARISE)
+      setShowAriseTrigger(true);
       return;
     }
 
     const timer = setInterval(() => {
-      setFocusTimeLeft(prev => prev - 1);
+      setFocusTimeLeft(prev => {
+        const nextTime = prev - 1;
+        // Drain boss HP proportionally
+        setBossHp(() => {
+          const decay = bossMaxHp / (prev || 1);
+          return Math.max(0, bossHp - decay);
+        });
+        return nextTime;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isFocusActive, focusTimeLeft]);
+  }, [isFocusActive, focusTimeLeft, bossHp, bossMaxHp]);
 
-  // Monitor Page Visibility leaks in Focus Chamber
+  // Monitor Page Visibility leaks in Focus Chamber (Boss strikes on distraction)
   useEffect(() => {
     if (!isFocusActive) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        setIsFocusActive(false);
-        if (document.fullscreenElement) {
-          document.exitFullscreen().catch(() => {});
-        }
-        // Deduct XP penalty
-        setRpgBonusXp(prev => Math.max(0, prev - 25));
-        setFocusBreached(true);
-        
-        // Write penalty drop directly to Firestore if logged in
-        if (isFirebaseEnabled && user) {
-          const userDocRef = doc(db, "users", user.uid);
-          setDoc(userDocRef, { rpgBonusXp: Math.max(0, rpgBonusXp - 25) }, { merge: true })
-            .catch(err => console.error("Penalties save error:", err));
-        }
+        setPlayerHp(hp => {
+          const nextHp = Math.max(0, hp - 34);
+          if (nextHp <= 0) {
+            // Player defeated, abort focus session
+            setIsFocusActive(false);
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            setRpgBonusXp(prev => Math.max(0, prev - 25));
+            setFocusBreached(true);
+            playSound('penalty');
+          } else {
+            playSound('pop');
+            alert("[SYSTEM WARNING: The Gate Boss has detected your lack of focus! You took 34 damage!]");
+          }
+          return nextHp;
+        });
       }
     };
 
@@ -288,11 +476,24 @@ export default function App() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isFocusActive, rpgBonusXp, user]);
+  }, [isFocusActive]);
 
-  const enterFocusChamber = () => {
-    setFocusTimeLeft(1500); // 25 minutes
+  const enterFocusChamber = (rank, seconds) => {
+    setGateRank(rank);
+    setFocusTimeLeft(seconds);
+    
+    let maxHpVal = 100;
+    if (rank === 'S') maxHpVal = 600;
+    else if (rank === 'A') maxHpVal = 450;
+    else if (rank === 'B') maxHpVal = 300;
+    else if (rank === 'C') maxHpVal = 200;
+    else if (rank === 'D') maxHpVal = 150;
+    
+    setBossMaxHp(maxHpVal);
+    setBossHp(maxHpVal);
+    setPlayerHp(100);
     setFocusBreached(false);
+    setShowAriseTrigger(false);
     setIsFocusActive(true);
     
     if (document.documentElement.requestFullscreen) {
@@ -309,6 +510,7 @@ export default function App() {
     }
     setRpgBonusXp(prev => Math.max(0, prev - 25));
     setFocusBreached(true);
+    playSound('penalty');
     
     if (isFirebaseEnabled && user) {
       const userDocRef = doc(db, "users", user.uid);
@@ -855,39 +1057,143 @@ export default function App() {
     );
   }
 
+  if (isPenaltyActive) {
+    const minutes = Math.floor(penaltyTimeLeft / 60);
+    const seconds = penaltyTimeLeft % 60;
+    const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 antialiased selection:bg-red-500/10 selection:text-red-400 system-hologram">
+        <div className="system-scanline"></div>
+        <div className="max-w-md w-full bg-zinc-900/40 border-2 border-red-500 rounded-3xl p-8 backdrop-blur-md shadow-[0_0_50px_rgba(239,68,68,0.3)] text-center space-y-6 penalty-pulse">
+          <div className="space-y-3">
+            <span className="text-5xl animate-bounce inline-block">🚨</span>
+            <h1 className="text-2xl font-extrabold tracking-widest text-red-500 font-mono uppercase">
+              [ PENALTY QUEST ACTIVATED ]
+            </h1>
+            <p className="text-xs text-zinc-400 font-mono uppercase tracking-widest">
+              Quest: Survival in the Desert Centipede Arena
+            </p>
+          </div>
+
+          <div className="bg-black/50 border border-red-500/30 rounded-2xl p-6 font-mono space-y-4">
+            <div className="text-4xl font-black text-red-400 tracking-wider">
+              {timeString}
+            </div>
+            <p className="text-[10px] text-zinc-500 uppercase leading-relaxed">
+              You failed to complete your daily quests before midnight. Complete this 10-minute survival countdown to escape the penalty zone and unlock the system.
+            </p>
+          </div>
+
+          <div className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest animate-pulse">
+            System Locked // Escape Attempt In Progress
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen text-zinc-100 p-4 md:p-12 antialiased selection:bg-emerald-500/10 selection:text-emerald-400">
       
       {/* HTML5 Fullscreen Focus Chamber Overlay */}
       {isFocusActive && (
-        <div className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center p-6 z-50 animate-fade-in font-mono">
-          <div className="max-w-md w-full border border-red-500/30 bg-zinc-950 p-8 rounded-3xl text-center space-y-6 relative">
-            <div className="absolute top-2 right-4 text-[9px] text-zinc-500 font-mono uppercase">
-              // focus chamber active
-            </div>
-            <div className="text-4xl animate-pulse">🧘</div>
-            <div className="space-y-1">
-              <h2 className="text-lg font-bold text-red-500 tracking-widest uppercase">BOSS MODE</h2>
-              <p className="text-[10px] text-zinc-500 leading-relaxed uppercase">
-                PAGE VISIBILITY SENSORS ONLINE. AVOID SWITCHING WINDOWS OR FOCUS.
-              </p>
-            </div>
-            
-            <div className="text-6xl font-black text-zinc-100 font-mono tracking-wider tabular-nums py-4">
-              {Math.floor(focusTimeLeft / 60)}:{String(focusTimeLeft % 60).padStart(2, '0')}
-            </div>
+        <div className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center p-6 z-50 animate-fade-in font-mono system-hologram">
+          <div className="system-scanline"></div>
 
-            <div className="text-xs text-zinc-500 font-mono">
-              Penalty on Early Exit: <span className="text-red-400 font-bold">-25 XP</span>
-            </div>
+          {showAriseTrigger ? (
+            /* System Arise Prompt Box */
+            <div className="max-w-md w-full border-2 border-cyan-400 bg-zinc-950 p-8 rounded-3xl text-center space-y-6 relative shadow-[0_0_40px_rgba(34,211,238,0.3)]">
+              <span className="text-5xl animate-bounce inline-block">💀</span>
+              <div className="space-y-2">
+                <h2 className="text-xl font-extrabold text-cyan-400 tracking-widest uppercase">
+                  [ GATE CLEARED ]
+                </h2>
+                <p className="text-xs text-zinc-400 uppercase">
+                  You have defeated the {gateRank}-Rank Dungeon Boss!
+                </p>
+                <p className="text-[10px] text-cyan-300/80 uppercase mt-4">
+                  [ System: Extract shadow from the defeated beast? ]
+                </p>
+              </div>
 
-            <button
-              onClick={exitFocusChamberEarly}
-              className="w-full py-2.5 px-4 text-[10px] font-bold text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-500/20 bg-zinc-900/40 rounded-xl transition cursor-pointer font-mono uppercase tracking-wider"
-            >
-              ABORT SENSE CYCLE
-            </button>
-          </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => summonShadow(gateRank)}
+                  className="w-full py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-zinc-950 font-black rounded-xl text-xs uppercase tracking-widest transition cursor-pointer shadow-lg shadow-cyan-500/20"
+                >
+                  🔮 ARISE
+                </button>
+                <button
+                  onClick={() => {
+                    setIsFocusActive(false);
+                    setShowAriseTrigger(false);
+                    if (document.fullscreenElement) {
+                      document.exitFullscreen().catch(() => {});
+                    }
+                    const rewardXp = gateRank === 'S' ? 150 : gateRank === 'A' ? 100 : gateRank === 'B' ? 75 : gateRank === 'C' ? 50 : 30;
+                    setRpgBonusXp(prev => prev + rewardXp);
+                  }}
+                  className="w-full py-2.5 text-[9px] font-bold text-zinc-500 hover:text-zinc-350 transition cursor-pointer uppercase tracking-wider"
+                >
+                  Leave Dungeon (+{gateRank === 'S' ? 150 : gateRank === 'A' ? 100 : gateRank === 'B' ? 75 : gateRank === 'C' ? 50 : 30} XP)
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Active Gate Combat Screen */
+            <div className="max-w-md w-full border border-cyan-500/30 bg-zinc-950 p-8 rounded-3xl text-center space-y-6 relative shadow-[0_0_30px_rgba(34,211,238,0.15)]">
+              <div className="absolute top-2 right-4 text-[8px] text-cyan-500 font-mono uppercase tracking-widest">
+                // active {gateRank}-rank gate
+              </div>
+              
+              {/* Boss Info & Health Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-[10px] text-red-400 uppercase tracking-widest font-bold">
+                  <span>🐉 GATE BOSS</span>
+                  <span>{Math.round((bossHp / bossMaxHp) * 100)}% HP</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-900 border border-zinc-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-red-500 rounded-full transition-all duration-300"
+                    style={{ width: `${(bossHp / bossMaxHp) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Timer Count */}
+              <div className="text-6xl font-black text-cyan-400 font-mono tracking-wider tabular-nums py-2 animate-pulse">
+                {Math.floor(focusTimeLeft / 60)}:{String(focusTimeLeft % 60).padStart(2, '0')}
+              </div>
+
+              {/* Player HP */}
+              <div className="space-y-1 bg-zinc-950/40 border border-zinc-900 p-3 rounded-2xl">
+                <div className="flex justify-between items-center text-[9px] text-zinc-400 uppercase">
+                  <span>👤 PLAYER VITALITY</span>
+                  <span className={playerHp <= 34 ? 'text-red-400 animate-pulse font-bold' : 'text-emerald-400'}>
+                    {playerHp}/100 HP
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-zinc-900 border border-zinc-850 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                    style={{ width: `${playerHp}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="text-[9px] text-zinc-500 leading-relaxed uppercase">
+                Focus sensors active. Avoid switching window focus or taking damage.
+              </div>
+
+              <button
+                onClick={exitFocusChamberEarly}
+                className="w-full py-2.5 px-4 text-[10px] font-bold text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-500/20 bg-zinc-900/40 rounded-xl transition cursor-pointer font-mono uppercase tracking-wider"
+              >
+                ABORT DUNGEON
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -948,6 +1254,9 @@ export default function App() {
           logoutUser={logoutUser} 
           isAuthLoading={isAuthLoading}
           characterStats={characterStats}
+          stats={stats}
+          statPoints={statPoints}
+          allocateStatPoint={allocateStatPoint}
         />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           <div className="lg:col-span-2 space-y-8">
@@ -981,6 +1290,11 @@ export default function App() {
               openChest={openChest}
               enterFocusChamber={enterFocusChamber}
             />
+            {user && (
+              <div className="mt-8">
+                <ShadowArmy shadows={shadows} />
+              </div>
+            )}
           </div>
         </div>
       </div>

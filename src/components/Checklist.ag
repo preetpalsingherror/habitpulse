@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'antigravity';
 import { Plus, Trash2, Check, Sparkles } from 'lucide-react';
 import { calculateStreak } from '../utils/streak';
 import { calculateUnifiedPowerRating, analyzeBehavioralRisk } from '../utils/gamificationEngine';
+import { playSound } from '../utils/audioHelper';
 
 export default function Checklist({
   addCustomHabit,
@@ -28,6 +29,7 @@ export default function Checklist({
   // Pop indicators
   const [animatingXp, setAnimatingXp] = useState({});
   const [unlockedReward, setUnlockedReward] = useState(null);
+  const [showGateSelector, setShowGateSelector] = useState(false);
 
   // Format selectedDate for display
   const dateObj = new Date(selectedDate + 'T00:00:00');
@@ -39,13 +41,13 @@ export default function Checklist({
 
   const isFuture = selectedDate > todayStr;
 
-  // Sync log logs
+  // Sync journal local state
   useEffect(() => {
     setLocalJournal(selectedDayData._journal || '');
     setSaveStatus('Idle');
   }, [selectedDate, selectedDayData._journal]);
 
-  // Derived math indicators
+  // Derived metrics
   const powerRating = useMemo(() => {
     return calculateUnifiedPowerRating(trackerData, allHabits);
   }, [trackerData, allHabits]);
@@ -54,48 +56,8 @@ export default function Checklist({
     return analyzeBehavioralRisk(trackerData, allHabits);
   }, [trackerData, allHabits]);
 
-  const playPopSound = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(450, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.08, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.12);
-    } catch (e) {
-      console.warn("AudioContext failed to start:", e);
-    }
-  };
-
-  const playChestSound = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5 notes
-      notes.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
-        gain.gain.setValueAtTime(0.06, ctx.currentTime + idx * 0.1);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.1 + 0.25);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime + idx * 0.1);
-        osc.stop(ctx.currentTime + idx * 0.1 + 0.25);
-      });
-    } catch (e) {
-      console.warn("AudioContext failed:", e);
-    }
-  };
-
   const handleToggle = (habitId, isCurrentlyCompleted) => {
-    playPopSound();
+    playSound('pop');
     if (!isCurrentlyCompleted) {
       setAnimatingXp(prev => ({ ...prev, [habitId]: true }));
       setTimeout(() => {
@@ -106,7 +68,7 @@ export default function Checklist({
   };
 
   const handleOpenChest = (chest) => {
-    playChestSound();
+    playSound('chest-fanfare');
     setUnlockedReward({
       habitLabel: chest.habitLabel,
       streak: chest.streak
@@ -145,43 +107,22 @@ export default function Checklist({
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", "habitpulse_backup.json");
+    downloadAnchor.setAttribute("download", "uplife_backup.json");
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
-  const colors = {
-    emerald: {
-      accent: 'emerald',
-      text: 'text-emerald-400',
-      bg: 'bg-emerald-500',
-      border: 'border-emerald-500/20',
-      fill: 'bg-emerald-500/10',
-      hover: 'hover:bg-emerald-400',
-      shadow: 'shadow-emerald-500/10',
-    },
-    purple: {
-      accent: 'purple',
-      text: 'text-purple-400',
-      bg: 'bg-purple-500',
-      border: 'border-purple-500/20',
-      fill: 'bg-purple-500/10',
-      hover: 'hover:bg-purple-400',
-      shadow: 'shadow-purple-500/10',
-    },
-    blue: {
-      accent: 'blue',
-      text: 'text-blue-400',
-      bg: 'bg-blue-500',
-      border: 'border-blue-500/20',
-      fill: 'bg-blue-500/10',
-      hover: 'hover:bg-blue-400',
-      shadow: 'shadow-blue-500/10',
-    }
-  };
-
-  const activeColor = colors[theme] || colors.emerald;
+  // Gates Config Map
+  const gates = [
+    { rank: 'E', time: '10 Min', seconds: 600, desc: 'For beginners starting their growth.' },
+    { rank: 'D', time: '25 Min', seconds: 1500, desc: 'Standard hunter focus gate.' },
+    { rank: 'C', time: '40 Min', seconds: 2400, desc: 'Moderate mainframe training run.' },
+    { rank: 'B', time: '50 Min', seconds: 3000, desc: 'Advanced netrunner defense gate.' },
+    { rank: 'A', time: '60 Min', seconds: 3600, desc: 'High intensity dungeon run.' },
+    { rank: 'S', time: '90 Min', seconds: 5400, desc: 'Boss-tier dungeon. Extreme challenge.' },
+    { rank: 'Test', time: '10 Sec', seconds: 10, desc: 'System verification verification code.' }
+  ];
 
   return (
     <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md space-y-6 relative">
@@ -196,7 +137,7 @@ export default function Checklist({
               <h2 className="text-base font-extrabold text-amber-400 font-mono tracking-widest uppercase">
                 SYSTEM CHEST UNLOCKED
               </h2>
-              <p className="text-[10px] text-zinc-500 font-mono">
+              <p className="text-[10px] text-zinc-555 text-zinc-500 font-mono">
                 TELEMETRY CHAIN REWARD GRANTED
               </p>
               <p className="text-xs font-bold text-zinc-200 mt-4 font-mono uppercase bg-zinc-950/60 py-2.5 border border-zinc-850 rounded-xl">
@@ -218,11 +159,61 @@ export default function Checklist({
         </div>
       )}
 
+      {/* GATE SELECTOR MODAL */}
+      {showGateSelector && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in font-mono system-hologram">
+          <div className="system-scanline"></div>
+          <div className="relative max-w-md w-full bg-zinc-950 border-2 border-cyan-400/80 rounded-3xl p-6 shadow-[0_0_30px_rgba(34,211,238,0.25)] space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-cyan-500/30 pb-3">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest">[ SELECT GATE RANK ]</span>
+              <button 
+                onClick={() => setShowGateSelector(false)}
+                className="text-zinc-500 hover:text-cyan-400 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {gates.map((g) => (
+                <button
+                  key={g.rank}
+                  onClick={() => {
+                    setShowGateSelector(false);
+                    enterFocusChamber(g.rank, g.seconds);
+                  }}
+                  className="w-full text-left p-3 bg-zinc-900/60 hover:bg-cyan-950/20 border border-zinc-800 hover:border-cyan-500/30 rounded-xl flex items-center justify-between transition cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-extrabold border ${
+                      g.rank === 'S' 
+                        ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                        : g.rank === 'A'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-450 text-rose-400'
+                        : g.rank === 'B'
+                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                        : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                    }`}>
+                      {g.rank}
+                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-bold text-zinc-200">{g.time} Gate</span>
+                      <span className="text-[8px] text-zinc-500 truncate max-w-[200px]">{g.desc}</span>
+                    </div>
+                  </div>
+                  <span className="text-[9px] text-cyan-500 group-hover:translate-x-1 transition duration-200">▶</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Theme Selector config panel */}
       <div className="space-y-2 pb-4 border-b border-zinc-800/60">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Accent Channel</span>
-          <span className={`text-[10px] font-mono font-bold ${activeColor.text} uppercase`}>{theme}</span>
+          <span className="text-[10px] text-zinc-505 text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Accent Channel</span>
+          <span className={`text-[10px] font-mono font-bold text-cyan-400 uppercase`}>{theme}</span>
         </div>
         <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/60 border border-zinc-850 rounded-xl">
           {['emerald', 'purple', 'blue'].map((t) => (
@@ -236,7 +227,7 @@ export default function Checklist({
                     : t === 'blue'
                     ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
                     : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                  : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                  : 'text-zinc-500 hover:text-zinc-350 border border-transparent'
               }`}
             >
               {t === 'emerald' ? 'Emerald' : t === 'purple' ? 'Purple' : 'Sapphire'}
@@ -253,7 +244,7 @@ export default function Checklist({
         </div>
         <div className="flex flex-col items-end">
           <span className={`text-2xl font-mono font-black ${
-            powerRating >= 750 ? 'text-emerald-400' : powerRating >= 400 ? 'text-cyan-400' : 'text-zinc-400'
+            powerRating >= 750 ? 'text-cyan-400' : powerRating >= 400 ? 'text-sky-400' : 'text-zinc-400'
           }`}>
             {powerRating}
           </span>
@@ -273,14 +264,14 @@ export default function Checklist({
           
           <div className="space-y-2.5">
             {unclaimedChests.map((chest) => (
-              <div key={chest.id} className="flex items-center justify-between bg-zinc-950/60 border border-zinc-850 p-2.5 rounded-lg">
+              <div key={chest.id} className="flex items-center justify-between bg-zinc-950/60 border border-zinc-850 p-2.5 rounded-lg font-mono">
                 <div className="flex items-center gap-2">
                   <span className="text-xl animate-pulse">🎁</span>
                   <div className="flex flex-col text-left">
-                    <span className="text-[10px] font-bold text-zinc-200 font-mono truncate max-w-[120px]">
+                    <span className="text-[10px] font-bold text-zinc-200 truncate max-w-[120px]">
                       {chest.habitLabel}
                     </span>
-                    <span className="text-[8px] text-zinc-500 font-mono uppercase">
+                    <span className="text-[8px] text-zinc-500 uppercase">
                       {chest.streak}d Streak Reward
                     </span>
                   </div>
@@ -312,27 +303,21 @@ export default function Checklist({
         </div>
       )}
 
-      {/* Focus Chamber Launcher */}
+      {/* Gate Dungeon Focus Chamber Launcher */}
       {!isFuture && allHabits.length > 0 && (
         <div className="pt-1">
           <button
-            onClick={enterFocusChamber}
-            className={`w-full py-2.5 font-mono font-black uppercase text-[9px] tracking-widest rounded-xl transition cursor-pointer border ${
-              theme === 'purple'
-                ? 'bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-zinc-950 border-purple-500/30'
-                : theme === 'blue'
-                ? 'bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-zinc-950 border-blue-500/30'
-                : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-zinc-950 border-emerald-500/30'
-            } active:scale-95 shadow-md`}
+            onClick={() => setShowGateSelector(true)}
+            className="w-full py-2.5 font-mono font-black uppercase text-[9px] tracking-widest rounded-xl transition cursor-pointer border bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-zinc-950 border-cyan-500/30 active:scale-95 shadow-md"
           >
-            🛰️ LAUNCH FOCUS CHAMBER
+            🐉 Enter the Gate (Focus Run)
           </button>
         </div>
       )}
 
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-xs font-semibold font-mono text-zinc-400 uppercase tracking-widest">// Log Targets</h2>
+          <h2 className="text-xs font-semibold font-mono text-zinc-400 uppercase tracking-widest">// Quest logs</h2>
           <p className="text-lg font-bold text-zinc-100 mt-1 font-mono">{formattedDate}</p>
         </div>
         {isFuture && (
@@ -343,41 +328,41 @@ export default function Checklist({
       </div>
 
       {isFuture && (
-        <div className="px-3.5 py-2.5 rounded-xl bg-zinc-950/40 border border-zinc-900/60 text-zinc-650 text-xs text-center font-mono select-none">
+        <div className="px-3.5 py-2.5 rounded-xl bg-zinc-950/40 border border-zinc-900/60 text-zinc-500 text-xs text-center font-mono select-none">
           Data Integrity Lock: Future logging is disabled.
         </div>
       )}
 
       {/* Onboarding Empty Slate Illustration */}
       {allHabits.length === 0 && !showFormForce ? (
-        <div className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-4 border border-dashed border-zinc-805 border-zinc-800 rounded-xl bg-zinc-950/20">
+        <div className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-4 border border-dashed border-zinc-800 rounded-xl bg-zinc-950/20">
           <div className="w-16 h-16 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-2xl relative shadow-inner">
-            <Sparkles className={`w-6 h-6 ${activeColor.text}`} />
-            <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full ${activeColor.bg} animate-pulse`}></div>
+            <Sparkles className="w-6 h-6 text-cyan-400" />
+            <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-cyan-500 animate-pulse"></div>
           </div>
           <div className="space-y-1">
-            <h3 className="text-xs font-bold font-mono text-zinc-200">Empty Slate</h3>
+            <h3 className="text-xs font-bold font-mono text-zinc-200">Empty Quest Board</h3>
             <p className="text-[10px] text-zinc-500 max-w-[200px] leading-relaxed font-mono">
-              Your productivity is a blank canvas. Let's create your first customizable habit.
+              The system requires targets. Define your first custom Daily Quest below.
             </p>
           </div>
           <button
             onClick={() => setShowFormForce(true)}
-            className={`px-4 py-2 text-xs font-mono font-bold uppercase rounded-xl transition ${activeColor.bg} hover:opacity-90 text-zinc-950 ${activeColor.shadow} shadow-lg cursor-pointer active:scale-95`}
+            className="px-4 py-2 text-xs font-mono font-bold uppercase rounded-xl transition bg-cyan-500 hover:opacity-90 text-zinc-950 shadow-cyan-500/10 shadow-lg cursor-pointer active:scale-95"
           >
-            Create Custom Habit
+            Add Daily Quest
           </button>
         </div>
       ) : (
-        /* Habits Checklist with spring popped scaling and audio pop */
+        /* Daily Quests Checklist */
         <div className="space-y-3">
           {allHabits.map((habit) => {
             const isCompleted = !!selectedDayData[habit.id];
             const { currentStreak, longestStreak } = calculateStreak(habit.id, trackerData, todayStr);
 
-            const activeText = theme === 'purple' ? 'text-purple-400' : theme === 'blue' ? 'text-blue-400' : 'text-emerald-400';
-            const activeBorder = theme === 'purple' ? 'border-purple-500/30' : theme === 'blue' ? 'border-blue-500/30' : 'border-emerald-500/30';
-            const activeFill = theme === 'purple' ? 'bg-purple-500/5' : theme === 'blue' ? 'bg-blue-500/5' : 'bg-emerald-500/5';
+            const activeText = 'text-cyan-400';
+            const activeBorder = 'border-cyan-500/30';
+            const activeFill = 'bg-cyan-500/5';
             
             const itemClass = isFuture
               ? 'opacity-20 bg-zinc-950/20 border-zinc-900/50 cursor-not-allowed'
@@ -401,7 +386,7 @@ export default function Checklist({
                 >
                   {/* Floating +10 XP text overlay */}
                   {animatingXp[habit.id] && (
-                    <span className={`absolute left-7 -top-4 text-[10px] font-black ${activeText} font-mono tracking-wider animate-xp-float select-none`}>
+                    <span className="absolute left-7 -top-4 text-[10px] font-black text-cyan-400 font-mono tracking-wider animate-xp-float select-none">
                       +10 XP
                     </span>
                   )}
@@ -411,15 +396,15 @@ export default function Checklist({
                       isFuture
                         ? 'border-zinc-800 text-zinc-700 bg-zinc-950/30'
                         : isCompleted
-                        ? `${activeColor.bg} border-zinc-400 text-zinc-950`
+                        ? 'bg-cyan-500 border-zinc-400 text-zinc-950'
                         : 'border-zinc-700 group-hover:border-zinc-500'
                     }`}
                   >
                     {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
-                  <div className="flex flex-col text-left">
+                  <div className="flex flex-col text-left font-mono">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold font-mono tracking-tight transition-all ${isFuture ? 'text-zinc-650' : isCompleted ? 'text-zinc-500 line-through opacity-80' : 'text-zinc-200'}`}>
+                      <span className={`text-xs font-bold tracking-tight transition-all ${isFuture ? 'text-zinc-650' : isCompleted ? 'text-zinc-500 line-through opacity-80' : 'text-zinc-200'}`}>
                         {habit.label}
                       </span>
                       <span className="px-1.5 py-0.5 text-[8px] font-mono font-extrabold uppercase rounded bg-zinc-950/80 text-zinc-500 border border-zinc-850">
@@ -427,7 +412,7 @@ export default function Checklist({
                       </span>
                     </div>
                     {!isFuture && (currentStreak > 0 || longestStreak > 0) && (
-                      <span className={`text-[10px] ${activeText} font-mono font-bold flex items-center gap-1 mt-0.5 opacity-85`}>
+                      <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1 mt-0.5 opacity-85">
                         🔥 {currentStreak}d streak <span className="text-zinc-800">&bull;</span> max {longestStreak}d
                       </span>
                     )}
@@ -438,7 +423,7 @@ export default function Checklist({
                   <button
                     onClick={() => removeCustomHabit(habit.id)}
                     className="p-1 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer"
-                    title="Remove Custom Habit"
+                    title="Remove Quest"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -452,19 +437,19 @@ export default function Checklist({
       {/* Advanced Habit Creation Form */}
       {(allHabits.length > 0 || showFormForce) && (
         <form onSubmit={handleCreateHabit} className={`space-y-3 pt-4 border-t border-zinc-800/60 ${isFuture ? 'opacity-20 cursor-not-allowed' : ''}`}>
-          <div className="flex gap-2">
+          <div className="flex gap-2 font-mono">
             <input
               type="text"
               value={habitName}
               onChange={(e) => !isFuture && setHabitName(e.target.value)}
               disabled={isFuture}
-              placeholder={isFuture ? "Locked..." : "Habit label..."}
+              placeholder={isFuture ? "Locked..." : "Quest label..."}
               className={`flex-1 bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2 text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 transition ${isFuture ? 'cursor-not-allowed' : ''}`}
             />
             <button
               type="submit"
               disabled={isFuture}
-              className={`p-2.5 rounded-xl transition ${isFuture ? 'cursor-not-allowed bg-zinc-950/20 text-zinc-700 border border-zinc-900' : `${activeColor.bg} ${activeColor.hover} text-zinc-950 cursor-pointer active:scale-95 font-mono font-extrabold uppercase text-[10px] ${activeColor.shadow} shadow-lg`}`}
+              className="p-2.5 rounded-xl transition bg-cyan-500 hover:bg-cyan-400 text-zinc-950 cursor-pointer active:scale-95 font-mono font-extrabold uppercase text-[10px] shadow-cyan-500/10 shadow-lg"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -480,11 +465,7 @@ export default function Checklist({
                 onClick={() => setSelectedTag(t)}
                 className={`flex-1 py-1 rounded-lg text-[9px] font-mono font-bold uppercase transition ${isFuture ? 'cursor-not-allowed' : 'cursor-pointer'} ${
                   selectedTag === t
-                    ? theme === 'purple'
-                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                      : theme === 'blue'
-                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                     : 'text-zinc-600 hover:text-zinc-400 border border-transparent'
                 }`}
               >
@@ -502,7 +483,7 @@ export default function Checklist({
             // Daily Focus logs
           </label>
           {saveStatus !== 'Idle' && (
-            <span className={`text-[9px] font-mono font-bold ${saveStatus === 'Saving' ? 'text-zinc-500 animate-pulse' : activeColor.text}`}>
+            <span className={`text-[9px] font-mono font-bold text-cyan-400`}>
               {saveStatus === 'Saving' ? 'SYNCING...' : 'SAVED ✓'}
             </span>
           )}
@@ -527,7 +508,7 @@ export default function Checklist({
 
       {/* Data Portability Engine */}
       <div className="pt-4 border-t border-zinc-800/60 flex items-center justify-between gap-4">
-        <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Datapack</span>
+        <span className="text-[10px] text-zinc-505 text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Datapack</span>
         <button
           onClick={exportBackup}
           className="text-xs font-bold px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition cursor-pointer flex items-center gap-1.5 active:scale-95"

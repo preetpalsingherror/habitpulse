@@ -1,0 +1,62 @@
+export default function ShadowArmy({ shadows }) {
+  const totalMultiplier = shadows.reduce((acc, s) => acc + s.multiplier, 0);
+
+  return (
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md space-y-6 relative font-mono">
+      <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
+        <div>
+          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+            👥 Shadow Army // Monarch Channel
+          </h2>
+          <p className="text-[10px] text-zinc-550 text-zinc-500 uppercase mt-0.5">
+            Active extracted soldiers from cleared gate mainframes.
+          </p>
+        </div>
+        {shadows.length > 0 && (
+          <span className="px-2 py-1 text-[9px] font-bold bg-purple-500/20 border border-purple-500/35 text-purple-300 rounded-lg animate-pulse">
+            +{totalMultiplier}% XP Boost
+          </span>
+        )}
+      </div>
+
+      {shadows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-3 border border-dashed border-zinc-800 rounded-xl bg-zinc-950/20">
+          <span className="text-4xl filter grayscale">👤</span>
+          <div className="space-y-1">
+            <h3 className="text-xs font-bold text-zinc-300 uppercase">Army Empty</h3>
+            <p className="text-[9px] text-zinc-550 max-w-[200px] leading-relaxed">
+              No shadow soldiers extracted. Clear high-rank Gates and invoke the "ARISE" command to summon.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {shadows.map((shadow) => (
+            <div 
+              key={shadow.id} 
+              className="flex items-center gap-3 bg-zinc-950/60 border border-purple-950/30 hover:border-purple-500/30 p-3 rounded-xl transition duration-300 group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-purple-950/15 border border-purple-500/20 flex items-center justify-center text-xl group-hover:scale-110 transition duration-300 shadow-[0_0_10px_rgba(168,85,247,0.1)]">
+                {shadow.icon}
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold text-zinc-200 truncate max-w-[110px]">
+                  {shadow.name}
+                </span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[8px] text-purple-400 font-extrabold uppercase">
+                    {shadow.rank}
+                  </span>
+                  <span className="text-zinc-700">&bull;</span>
+                  <span className="text-[8px] text-emerald-400 font-bold">
+                    +{shadow.multiplier}% XP
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
