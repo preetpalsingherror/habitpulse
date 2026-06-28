@@ -5,5 +5,11 @@
   "server": {
     "url": "https://preetpalsingherror.github.io/habitpulse/",
     "cleartext": true
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": ["google.com"]
+    }
   }
 }
