@@ -2,10 +2,6 @@
   "appId": "com.habitpulse.warriorapp",
   "appName": "UPLIFE",
   "webDir": "dist",
-  "server": {
-    "url": "https://preetpalsingherror.github.io/habitpulse/",
-    "cleartext": true
-  },
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
