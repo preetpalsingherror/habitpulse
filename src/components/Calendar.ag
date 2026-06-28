@@ -1,26 +1,30 @@
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
-export default function Calendar({ currentMonth, changeMonth, calendarDays, selectedDate, setSelectedDate, trackerData, allHabits, todayStr }) {
+export default function Calendar({ currentMonth, changeMonth, calendarDays, selectedDate, setSelectedDate, trackerData, allHabits, todayStr, theme }) {
   return (
-    <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+      {/* Decorative tactical lines */}
+      <div className="absolute top-0 left-0 w-8 h-[2px] bg-zinc-700"></div>
+      <div className="absolute top-0 left-0 w-[2px] h-8 bg-zinc-700"></div>
+
+      <div className="flex items-center justify-between mb-6 relative z-10">
         <div className="flex items-center gap-2.5">
-          <CalendarIcon className="text-emerald-400 w-4 h-4"/>
-          <h2 className="text-sm font-semibold text-zinc-200">
-            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          <CalendarIcon className={`w-4 h-4 ${theme === 'purple' ? 'text-purple-400' : theme === 'blue' ? 'text-blue-400' : 'text-emerald-400'}`}/>
+          <h2 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-widest">
+            // TERMINAL DATE GRID: {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </h2>
         </div>
-        <div className="flex gap-1.5 bg-zinc-900/80 border border-zinc-800 p-1 rounded-xl">
-          <button onClick={() => changeMonth(-1)} className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition cursor-pointer"><ChevronLeft className="w-4 h-4"/></button>
-          <button onClick={() => changeMonth(1)} className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition cursor-pointer"><ChevronRight className="w-4 h-4"/></button>
+        <div className="flex gap-1.5 bg-zinc-950/80 border border-zinc-850 p-1 rounded-lg">
+          <button onClick={() => changeMonth(-1)} className="p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded transition cursor-pointer"><ChevronLeft className="w-3.5 h-3.5"/></button>
+          <button onClick={() => changeMonth(1)} className="p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded transition cursor-pointer"><ChevronRight className="w-3.5 h-3.5"/></button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 text-center text-xs font-medium text-zinc-600 mb-3">
+      <div className="grid grid-cols-7 text-center text-[10px] font-mono font-bold text-zinc-600 mb-3 uppercase tracking-wider">
         <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-2 relative z-10">
         {calendarDays.map((day, index) => {
           if (!day) return <div key={`empty-${index}`} className="aspect-square" />;
           
@@ -30,18 +34,36 @@ export default function Calendar({ currentMonth, changeMonth, calendarDays, sele
           const completedCount = allHabits.filter(h => dayLogs[h.id]).length;
           const totalHabits = allHabits.length;
           
-          let colorState = "bg-zinc-900/50 text-zinc-400 border-zinc-800/30";
+          let colorState = "bg-zinc-950/40 text-zinc-500 border-zinc-900/60";
           if (isFuture) {
-            colorState = "opacity-20 bg-zinc-950/20 text-zinc-600 border-zinc-900/50 cursor-not-allowed";
-          } else if (completedCount > 0) {
+            // Stylized future date locked with diagonal cage mesh pattern
+            colorState = "bg-mesh-locked opacity-20 text-zinc-700 border-zinc-900/50 cursor-not-allowed pointer-events-none";
+          } else if (completedCount > 0 && totalHabits > 0) {
             const ratio = completedCount / totalHabits;
-            if (ratio <= 0.34) colorState = "bg-emerald-950/30 text-emerald-400 border-emerald-900/20";
-            else if (ratio <= 0.67) colorState = "bg-emerald-900/20 text-emerald-300 border-emerald-800/30";
-            else colorState = "bg-emerald-500/10 text-emerald-200 border-emerald-500/20";
+            if (theme === 'purple') {
+              if (ratio <= 0.34) colorState = "bg-purple-950/30 text-purple-400 border-purple-900/20";
+              else if (ratio <= 0.67) colorState = "bg-purple-900/20 text-purple-300 border-purple-800/30";
+              else colorState = "bg-purple-500/10 text-purple-200 border-purple-500/20";
+            } else if (theme === 'blue') {
+              if (ratio <= 0.34) colorState = "bg-blue-950/30 text-blue-400 border-blue-900/20";
+              else if (ratio <= 0.67) colorState = "bg-blue-900/20 text-blue-300 border-blue-800/30";
+              else colorState = "bg-blue-500/10 text-blue-200 border-blue-500/20";
+            } else { // default 'emerald'
+              if (ratio <= 0.34) colorState = "bg-emerald-950/30 text-emerald-400 border-emerald-900/20";
+              else if (ratio <= 0.67) colorState = "bg-emerald-900/20 text-emerald-300 border-emerald-800/30";
+              else colorState = "bg-emerald-500/10 text-emerald-200 border-emerald-500/20";
+            }
+          }
+
+          let activeStyle = 'bg-emerald-500 text-zinc-950 font-bold border-emerald-400 shadow-lg shadow-emerald-500/20 scale-105 cursor-pointer';
+          if (theme === 'purple') {
+            activeStyle = 'bg-purple-500 text-zinc-950 font-bold border-purple-400 shadow-lg shadow-purple-500/20 scale-105 cursor-pointer';
+          } else if (theme === 'blue') {
+            activeStyle = 'bg-blue-500 text-zinc-950 font-bold border-blue-400 shadow-lg shadow-blue-500/20 scale-105 cursor-pointer';
           }
 
           const buttonClass = isSelected && !isFuture
-            ? 'bg-emerald-500 text-zinc-950 font-bold border-emerald-400 shadow-lg shadow-emerald-500/10 scale-105 cursor-pointer'
+            ? activeStyle
             : `${colorState} ${isFuture ? '' : 'hover:border-zinc-700 hover:bg-zinc-800/30 cursor-pointer'}`;
 
           return (
@@ -51,9 +73,9 @@ export default function Calendar({ currentMonth, changeMonth, calendarDays, sele
               disabled={isFuture}
               className={`aspect-square flex flex-col items-center justify-between p-2 rounded-xl border text-xs font-medium transition-all duration-150 ${buttonClass}`}
             >
-              <span>{day.dayNumber}</span>
+              <span className="font-mono">{day.dayNumber}</span>
               {!isSelected && completedCount > 0 && !isFuture && (
-                <span className="text-[9px] opacity-60 font-semibold">{completedCount}/{totalHabits}</span>
+                <span className="text-[8px] opacity-60 font-mono font-bold tracking-tight">{completedCount}/{totalHabits}</span>
               )}
             </button>
           );

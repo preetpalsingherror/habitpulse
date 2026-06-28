@@ -23,12 +23,33 @@ body {
   }
 }
 
+@keyframes pulse-emerald {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
 .live-pulse-dot {
   width: 8px;
   height: 8px;
   background-color: #10b981;
   border-radius: 50%;
   animation: live-glow 2s infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Custom scrollbars for a premium feel */
@@ -48,4 +69,71 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+}
+
+/* Cyberpunk Mesh locked style */
+.bg-mesh-locked {
+  background-image: repeating-linear-gradient(45deg, rgba(39, 39, 42, 0.4) 0px, rgba(39, 39, 42, 0.4) 2px, transparent 2px, transparent 8px);
+}
+
+/* XP Float animation */
+@keyframes xp-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-25px) scale(0.9);
+  }
+}
+.animate-xp-float {
+  animation: xp-float 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Checkbox Spring Pop */
+@keyframes spring-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.animate-spring-pop {
+  animation: spring-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Character Telemetry Rank Neon Breathing Animations */
+.wandering-novice-glow {
+  border-color: rgba(16, 185, 129, 0.3);
+  animation: novice-breathe 3s infinite alternate;
+}
+@keyframes novice-breathe {
+  0% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.15); }
+  100% { box-shadow: 0 0 16px rgba(6, 182, 212, 0.35); }
+}
+
+.code-vanguard-glow {
+  border-color: rgba(59, 130, 246, 0.45);
+  animation: vanguard-breathe 2.5s infinite alternate;
+}
+@keyframes vanguard-breathe {
+  0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+  100% { box-shadow: 0 0 22px rgba(99, 102, 241, 0.5); }
+}
+
+.shadow-cybermonk-glow {
+  border-color: rgba(168, 85, 247, 0.6);
+  animation: monk-breathe 2s infinite alternate;
+}
+@keyframes monk-breathe {
+  0% { box-shadow: 0 0 12px rgba(168, 85, 247, 0.3); }
+  100% { box-shadow: 0 0 28px rgba(236, 72, 153, 0.65); }
+}
+
+.algorithm-sovereign-glow {
+  border-color: rgba(245, 158, 11, 0.75);
+  animation: sovereign-breathe 1.5s infinite alternate;
+}
+@keyframes sovereign-breathe {
+  0% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+  100% { box-shadow: 0 0 38px rgba(239, 68, 68, 0.8); }
 }

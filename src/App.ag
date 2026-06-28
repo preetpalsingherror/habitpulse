@@ -1,13 +1,32 @@
 import { useState, useMemo, useEffect } from 'antigravity';
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { auth, db, googleProvider, isFirebaseEnabled } from "./firebase";
 import Header from './components/Header';
 import Calendar from './components/Calendar';
 import Analytics from './components/Analytics';
 import Checklist from './components/Checklist';
+import { useGamifiedState } from './utils/useGamifiedState';
+import { computeLevelFromXP } from './utils/gamificationEngine';
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [customHabitInput, setCustomHabitInput] = useState('');
+  const [user, setUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(isFirebaseEnabled);
+  const [dismissAuthCard, setDismissAuthCard] = useState(false);
+  const [authError, setAuthError] = useState(null);
+
+  // Focus Chamber state models
+  const [isFocusActive, setIsFocusActive] = useState(false);
+  const [focusTimeLeft, setFocusTimeLeft] = useState(1500); // 25 minutes in seconds
+  const [focusBreached, setFocusBreached] = useState(false);
+
+  // Dynamic dashboard themes: 'emerald', 'purple', 'blue'
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('ag_theme');
+    return saved || 'emerald';
+  });
   
   const [trackerData, setTrackerData] = useState(() => {
     const saved = localStorage.getItem('ag_tracker_data');
@@ -19,6 +38,23 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // RPG telemetry bonus/penalty offset (chest claims & focus breaches)
+  const [rpgBonusXp, setRpgBonusXp] = useState(() => {
+    const saved = localStorage.getItem('ag_rpg_bonus_xp');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const [claimedMilestones, setClaimedMilestones] = useState(() => {
+    const saved = localStorage.getItem('ag_claimed_milestones');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [unclaimedChests, setUnclaimedChests] = useState(() => {
+    const saved = localStorage.getItem('ag_unclaimed_chests');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Keep LocalStorage fallback cache updated
   useEffect(() => {
     localStorage.setItem('ag_tracker_data', JSON.stringify(trackerData));
   }, [trackerData]);
@@ -27,37 +63,397 @@ export default function App() {
     localStorage.setItem('ag_global_habits', JSON.stringify(customHabits));
   }, [customHabits]);
 
-  const coreHabits = useMemo(() => [
-    { id: 'study', label: 'Did I study today?' },
-    { id: 'water', label: 'Did I drink enough water?' },
-    { id: 'gym', label: 'Did I go to the gym today?' },
-    { id: 'steps', label: 'Did I walk 10k steps?' }
-  ], []);
+  useEffect(() => {
+    localStorage.setItem('ag_theme', theme);
+  }, [theme]);
 
-  const allHabits = useMemo(() => [...coreHabits, ...customHabits], [coreHabits, customHabits]);
+  useEffect(() => {
+    localStorage.setItem('ag_rpg_bonus_xp', rpgBonusXp.toString());
+  }, [rpgBonusXp]);
 
-  const toggleHabit = (habitId) => {
-    setTrackerData(prev => {
-      const dayData = prev[selectedDate] || {};
-      return { ...prev, [selectedDate]: { ...dayData, [habitId]: !dayData[habitId] } };
+  useEffect(() => {
+    localStorage.setItem('ag_claimed_milestones', JSON.stringify(claimedMilestones));
+  }, [claimedMilestones]);
+
+  useEffect(() => {
+    localStorage.setItem('ag_unclaimed_chests', JSON.stringify(unclaimedChests));
+  }, [unclaimedChests]);
+
+  // Auth State Listener
+  useEffect(() => {
+    if (!isFirebaseEnabled) return;
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
     });
+    return () => unsubscribe();
+  }, []);
+
+  // Firestore Snapshot Sync Listener (WebSockets streaming under users/{uid})
+  useEffect(() => {
+    if (!isFirebaseEnabled || !user) return;
+
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.trackerData) setTrackerData(data.trackerData);
+        if (data.customHabits) setCustomHabits(data.customHabits);
+        if (data.theme) setTheme(data.theme);
+        if (data.rpgBonusXp !== undefined) setRpgBonusXp(data.rpgBonusXp);
+        if (data.claimedMilestones) setClaimedMilestones(data.claimedMilestones);
+        if (data.unclaimedChests) setUnclaimedChests(data.unclaimedChests);
+      } else {
+        // Doc doesn't exist, initialize Firestore with current local state
+        setDoc(userDocRef, {
+          trackerData: trackerData,
+          customHabits: customHabits,
+          theme: theme,
+          rpgBonusXp: rpgBonusXp,
+          claimedMilestones: claimedMilestones,
+          unclaimedChests: unclaimedChests
+        });
+      }
+    }, (err) => {
+      console.error("Firestore snapshot error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const allHabits = useMemo(() => customHabits, [customHabits]);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Compute base RPG parameters via gamification state hook
+  const derivedTelemetry = useGamifiedState(trackerData, allHabits);
+
+  // Derived RPG Telemetry State combining completions and database bonus offsets
+  const characterStats = useMemo(() => {
+    const finalXp = Math.max(0, derivedTelemetry.totalXP + rpgBonusXp);
+    const levelInfo = computeLevelFromXP(finalXp);
+    
+    let title = 'Wandering Novice';
+    let rankGlow = 'wandering-novice-glow';
+    if (levelInfo.level >= 26) {
+      title = 'Algorithm Sovereign';
+      rankGlow = 'algorithm-sovereign-glow';
+    } else if (levelInfo.level >= 13) {
+      title = 'Shadow Cyber-Monk';
+      rankGlow = 'shadow-cybermonk-glow';
+    } else if (levelInfo.level >= 6) {
+      title = 'Code Vanguard';
+      rankGlow = 'code-vanguard-glow';
+    }
+
+    return { 
+      level: levelInfo.level, 
+      currentXp: levelInfo.xpInCurrentLevel, 
+      xpNeeded: 100, 
+      title, 
+      rankGlow,
+      totalXp: finalXp
+    };
+  }, [derivedTelemetry.totalXP, rpgBonusXp]);
+
+  // Dynamic 7-day Streak Reward Checker
+  useEffect(() => {
+    const newChests = [];
+    const newClaimed = [...claimedMilestones];
+    let changed = false;
+
+    allHabits.forEach(habit => {
+      const completedDates = Object.keys(trackerData).filter(
+        date => trackerData[date] && trackerData[date][habit.id]
+      ).sort();
+
+      if (completedDates.length === 0) return;
+
+      let currentStreak = 0;
+      let checkDate = new Date(todayStr + 'T00:00:00');
+      
+      const hasToday = completedDates.includes(todayStr);
+      
+      const yesterday = new Date(checkDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const hasYesterday = completedDates.includes(yesterdayStr);
+
+      if (hasToday || hasYesterday) {
+        let currentDate = hasToday ? checkDate : yesterday;
+        while (true) {
+          const dateStr = currentDate.toISOString().split('T')[0];
+          if (completedDates.includes(dateStr)) {
+            currentStreak++;
+            currentDate.setDate(currentDate.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (currentStreak >= 7) {
+        const streakLevel = Math.floor(currentStreak / 7) * 7;
+        const milestoneKey = `${habit.id}_${streakLevel}`;
+        if (!newClaimed.includes(milestoneKey)) {
+          newClaimed.push(milestoneKey);
+          newChests.push({
+            id: `chest_${Date.now()}_${habit.id}_${streakLevel}`,
+            habitLabel: habit.label,
+            streak: streakLevel
+          });
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      setUnclaimedChests(prev => [...prev, ...newChests]);
+      setClaimedMilestones(newClaimed);
+
+      if (isFirebaseEnabled && user) {
+        const userDocRef = doc(db, "users", user.uid);
+        setDoc(userDocRef, {
+          unclaimedChests: [...unclaimedChests, ...newChests],
+          claimedMilestones: newClaimed
+        }, { merge: true }).catch(err => console.error("Milestone write error:", err));
+      }
+    }
+  }, [trackerData, allHabits, todayStr]);
+
+  // Focus Chamber Timer Countdown Loop
+  useEffect(() => {
+    if (!isFocusActive) return;
+    if (focusTimeLeft <= 0) {
+      setIsFocusActive(false);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setRpgBonusXp(prev => prev + 50); // Award XP on success
+      alert("Focus Session Complete! Core Telemetry rewarded with +50 XP!");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setFocusTimeLeft(prev => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isFocusActive, focusTimeLeft]);
+
+  // Monitor Page Visibility leaks in Focus Chamber
+  useEffect(() => {
+    if (!isFocusActive) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsFocusActive(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+        // Deduct XP penalty
+        setRpgBonusXp(prev => Math.max(0, prev - 25));
+        setFocusBreached(true);
+        
+        // Write penalty drop directly to Firestore if logged in
+        if (isFirebaseEnabled && user) {
+          const userDocRef = doc(db, "users", user.uid);
+          setDoc(userDocRef, { rpgBonusXp: Math.max(0, rpgBonusXp - 25) }, { merge: true })
+            .catch(err => console.error("Penalties save error:", err));
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isFocusActive, rpgBonusXp, user]);
+
+  const enterFocusChamber = () => {
+    setFocusTimeLeft(1500); // 25 minutes
+    setFocusBreached(false);
+    setIsFocusActive(true);
+    
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn("Fullscreen request rejected:", err);
+      });
+    }
   };
 
-  const addCustomHabit = (e) => {
-    e.preventDefault();
-    if (!customHabitInput.trim()) return;
+  const exitFocusChamberEarly = () => {
+    setIsFocusActive(false);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+    setRpgBonusXp(prev => Math.max(0, prev - 25));
+    setFocusBreached(true);
+    
+    if (isFirebaseEnabled && user) {
+      const userDocRef = doc(db, "users", user.uid);
+      setDoc(userDocRef, { rpgBonusXp: Math.max(0, rpgBonusXp - 25) }, { merge: true })
+        .catch(err => console.error("Penalties save error:", err));
+    }
+  };
+
+  const toggleHabit = async (habitId) => {
+    const updatedTracker = { ...trackerData };
+    const dayData = updatedTracker[selectedDate] || {};
+    const willBeCompleted = !dayData[habitId];
+    updatedTracker[selectedDate] = { ...dayData, [habitId]: willBeCompleted };
+    
+    setTrackerData(updatedTracker);
+    
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { trackerData: updatedTracker }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
+  };
+
+  const addCustomHabit = async (label, tag) => {
+    if (!label.trim()) return;
     const newId = `custom_${Date.now()}`;
-    setCustomHabits(prev => [...prev, { id: newId, label: customHabitInput.trim() }]);
-    setCustomHabitInput('');
+    const newHabit = { id: newId, label: label.trim(), tag: tag || 'Mind' };
+    const updatedHabits = [...customHabits, newHabit];
+    
+    setCustomHabits(updatedHabits);
+    
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { customHabits: updatedHabits }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
   };
 
-  const removeCustomHabit = (id) => {
-    setCustomHabits(prev => prev.filter(h => h.id !== id));
-    setTrackerData(prev => {
-      const updated = { ...prev };
-      if (updated[selectedDate]) delete updated[selectedDate][id];
-      return updated;
+  const removeCustomHabit = async (id) => {
+    const updatedHabits = customHabits.filter(h => h.id !== id);
+    const updatedTracker = { ...trackerData };
+    
+    Object.keys(updatedTracker).forEach(date => {
+      if (updatedTracker[date]) {
+        delete updatedTracker[date][id];
+      }
     });
+    
+    setCustomHabits(updatedHabits);
+    setTrackerData(updatedTracker);
+    
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { 
+          customHabits: updatedHabits,
+          trackerData: updatedTracker 
+        }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
+  };
+
+  const saveJournal = async (text) => {
+    const updatedTracker = { ...trackerData };
+    const dayData = updatedTracker[selectedDate] || {};
+    updatedTracker[selectedDate] = { ...dayData, _journal: text };
+    
+    setTrackerData(updatedTracker);
+    
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { trackerData: updatedTracker }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
+  };
+
+  const selectTheme = async (newTheme) => {
+    setTheme(newTheme);
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { theme: newTheme }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
+  };
+
+  const openChest = async (chestId) => {
+    const updatedChests = unclaimedChests.filter(c => c.id !== chestId);
+    const newBonusXp = rpgBonusXp + 100; // Award +100 XP
+    
+    setUnclaimedChests(updatedChests);
+    setRpgBonusXp(newBonusXp);
+    
+    if (isFirebaseEnabled && user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, { 
+          unclaimedChests: updatedChests,
+          rpgBonusXp: newBonusXp
+        }, { merge: true });
+      } catch (err) {
+        console.error("Firestore write error:", err);
+      }
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    if (!isFirebaseEnabled) {
+      setUser({
+        uid: "mock_warrior_1337",
+        displayName: "Beta Sandbox Warrior",
+        photoURL: null
+      });
+      setDismissAuthCard(true);
+      setAuthError("Firebase VITE_FIREBASE_API_KEY is not configured in .env.local. Running in Mock Developer Sandbox Mode.");
+      return;
+    }
+    try {
+      setAuthError(null);
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("Google Auth Sign-In failed:", err);
+      let message = "An error occurred during authentication.";
+      if (err.code === "auth/unauthorized-domain") {
+        message = "Domain Restriction: This domain is not authorized in the Firebase console for Google Sign-In.";
+      } else if (err.code === "auth/popup-blocked") {
+        message = "Popup Blocked: The authentication popup was blocked by your browser. Please allow popups for this site.";
+      } else if (err.code === "auth/popup-closed-by-user") {
+        message = "Popup Closed: The authentication window was closed before completing sign-in.";
+      } else {
+        message = err.message || message;
+      }
+      setAuthError(message);
+    }
+  };
+
+  const logoutUser = async () => {
+    if (!isFirebaseEnabled) {
+      setUser(null);
+      return;
+    }
+    try {
+      await signOut(auth);
+      const localTracker = localStorage.getItem('ag_tracker_data');
+      const localHabits = localStorage.getItem('ag_global_habits');
+      const localBonus = localStorage.getItem('ag_rpg_bonus_xp');
+      setTrackerData(localTracker ? JSON.parse(localTracker) : {});
+      setCustomHabits(localHabits ? JSON.parse(localHabits) : []);
+      setRpgBonusXp(localBonus ? parseInt(localBonus, 10) : 0);
+      setUnclaimedChests([]);
+    } catch (err) {
+      console.error("Google Auth Sign-Out failed:", err);
+    }
   };
 
   const changeMonth = (direction) => {
@@ -67,8 +463,6 @@ export default function App() {
       return newMonth;
     });
   };
-
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const calendarDays = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -92,7 +486,7 @@ export default function App() {
       const dayData = trackerData[dateStr] || {};
       
       const totalChecksPossible = allHabits.length;
-      const checksCompleted = allHabits.filter(h => dayData[h.id]).length;
+      const checksCompleted = allHabits.filter(h => dayData[h.id] === true).length;
       const percentage = totalChecksPossible > 0 ? Math.round((checksCompleted / totalChecksPossible) * 100) : 0;
 
       data.push({
@@ -103,10 +497,161 @@ export default function App() {
     return data;
   }, [trackerData, allHabits]);
 
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen text-zinc-100 flex items-center justify-center p-4 bg-zinc-950 selection:bg-emerald-500/10 selection:text-emerald-400">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-emerald-500/20 border-t-emerald-400 animate-spin"></div>
+          <span className="text-xs font-semibold text-zinc-500 tracking-wider uppercase">
+            Establishing Interlock Sync...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFirebaseEnabled && !user && !dismissAuthCard) {
+    return (
+      <div className="min-h-screen text-zinc-100 flex items-center justify-center p-4 antialiased bg-zinc-950 selection:bg-emerald-500/10 selection:text-emerald-400">
+        <div className="relative max-w-md w-full bg-zinc-900/30 border border-zinc-800/80 rounded-3xl p-8 backdrop-blur-md shadow-2xl text-center space-y-6 overflow-hidden">
+          <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-emerald-500/10 blur-3xl"></div>
+          <div className="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-teal-500/10 blur-3xl"></div>
+
+          <div className="space-y-2 relative z-10">
+            <span className="text-4xl">⚡</span>
+            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+              HabitPulse
+            </h1>
+            <p className="text-sm text-zinc-400">
+              Synchronize habits to the cloud or track offline with zero overhead.
+            </p>
+          </div>
+
+          <div className="py-4 relative z-10">
+            <button
+              onClick={loginWithGoogle}
+              className="w-full relative group py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/20 cursor-pointer overflow-hidden"
+              style={{
+                animation: "pulse-emerald 2.5s infinite"
+              }}
+            >
+              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span className="relative flex items-center justify-center gap-3">
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.51 0-6.377-2.87-6.377-6.38s2.867-6.38 6.377-6.38c1.6 0 3.05.59 4.178 1.57l3.079-3.08C19.4 2.73 16.03 1.5 12.24 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.24s4.77 10.74 10.74 10.74c5.96 0 10.66-4.73 10.66-10.74 0-.64-.06-1.28-.18-1.9H12.24z"/>
+                </svg>
+                Sign In with Google
+              </span>
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-zinc-800/60 relative z-10">
+            <button
+              onClick={() => setDismissAuthCard(true)}
+              className="text-xs font-semibold text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+            >
+              Continue Offline (Local Storage Cache)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen text-zinc-100 p-4 md:p-12 antialiased selection:bg-emerald-500/10 selection:text-emerald-400">
+      
+      {/* HTML5 Fullscreen Focus Chamber Overlay */}
+      {isFocusActive && (
+        <div className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center p-6 z-50 animate-fade-in font-mono">
+          <div className="max-w-md w-full border border-red-500/30 bg-zinc-950 p-8 rounded-3xl text-center space-y-6 relative">
+            <div className="absolute top-2 right-4 text-[9px] text-zinc-500 font-mono uppercase">
+              // focus chamber active
+            </div>
+            <div className="text-4xl animate-pulse">🧘</div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-red-500 tracking-widest uppercase">BOSS MODE</h2>
+              <p className="text-[10px] text-zinc-500 leading-relaxed uppercase">
+                PAGE VISIBILITY SENSORS ONLINE. AVOID SWITCHING WINDOWS OR FOCUS.
+              </p>
+            </div>
+            
+            <div className="text-6xl font-black text-zinc-100 font-mono tracking-wider tabular-nums py-4">
+              {Math.floor(focusTimeLeft / 60)}:{String(focusTimeLeft % 60).padStart(2, '0')}
+            </div>
+
+            <div className="text-xs text-zinc-500 font-mono">
+              Penalty on Early Exit: <span className="text-red-400 font-bold">-25 XP</span>
+            </div>
+
+            <button
+              onClick={exitFocusChamberEarly}
+              className="w-full py-2.5 px-4 text-[10px] font-bold text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-500/20 bg-zinc-900/40 rounded-xl transition cursor-pointer font-mono uppercase tracking-wider"
+            >
+              ABORT SENSE CYCLE
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Focus Breached Alert Modal */}
+      {focusBreached && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="max-w-sm w-full bg-zinc-900 border border-red-500/30 rounded-3xl p-6 text-center space-y-4 shadow-2xl relative">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto text-xl font-bold">
+              🚨
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-extrabold text-red-500 font-mono tracking-widest uppercase">
+                CHAMBER BREACHED
+              </h2>
+              <p className="text-xs text-zinc-400 font-mono leading-relaxed">
+                Focus sensors registered target redirection. Telemetry penalized:
+              </p>
+            </div>
+            <div className="text-2xl font-black text-red-400 font-mono tracking-wide">
+              -25 XP DOCKED
+            </div>
+            <button
+              onClick={() => setFocusBreached(false)}
+              className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold rounded-xl text-[10px] uppercase tracking-wider transition cursor-pointer"
+            >
+              Recalibrate HUD
+            </button>
+          </div>
+        </div>
+      )}
+
+      {authError && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl relative z-50 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto text-xl font-bold">
+              ⚠️
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-bold text-zinc-100">Sync Warning</h2>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {authError}
+              </p>
+            </div>
+            <button
+              onClick={() => setAuthError(null)}
+              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold rounded-xl text-xs transition cursor-pointer"
+            >
+              Acknowledge & Continue Offline
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto">
-        <Header/>
+        <Header 
+          user={user} 
+          loginWithGoogle={loginWithGoogle} 
+          logoutUser={logoutUser} 
+          isAuthLoading={isAuthLoading}
+          characterStats={characterStats}
+        />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           <div className="lg:col-span-2 space-y-8">
             <Calendar 
@@ -118,20 +663,26 @@ export default function App() {
               setSelectedDate={setSelectedDate} 
               trackerData={trackerData}
               todayStr={todayStr}
+              theme={theme}
             />
-            <Analytics chartData={chartData}/>
+            <Analytics chartData={chartData} theme={theme}/>
           </div>
           <div>
             <Checklist 
               addCustomHabit={addCustomHabit} 
               allHabits={allHabits} 
-              customHabitInput={customHabitInput} 
               removeCustomHabit={removeCustomHabit} 
               selectedDate={selectedDate} 
               selectedDayData={trackerData[selectedDate] || {}} 
-              setCustomHabitInput={setCustomHabitInput} 
               toggleHabit={toggleHabit}
               todayStr={todayStr}
+              trackerData={trackerData}
+              theme={theme}
+              selectTheme={selectTheme}
+              saveJournal={saveJournal}
+              unclaimedChests={unclaimedChests}
+              openChest={openChest}
+              enterFocusChamber={enterFocusChamber}
             />
           </div>
         </div>

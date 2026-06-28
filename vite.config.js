@@ -15,6 +15,11 @@ export default defineConfig({
     },
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.ag', '.json']
   },
+  server: {
+    watch: {
+      ignored: ['**/src-tauri/**']
+    }
+  },
   esbuild: {
     loader: 'jsx',
     include: /\.(jsx|tsx|ag)$/,

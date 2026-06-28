@@ -1,17 +1,35 @@
-import { Plus, Trash2, Check } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'antigravity';
+import { Plus, Trash2, Check, Sparkles } from 'lucide-react';
+import { calculateStreak } from '../utils/streak';
+import { calculateUnifiedPowerRating, analyzeBehavioralRisk } from '../utils/gamificationEngine';
 
 export default function Checklist({
   addCustomHabit,
   allHabits,
-  customHabitInput,
   removeCustomHabit,
   selectedDate,
   selectedDayData,
-  setCustomHabitInput,
   toggleHabit,
   todayStr,
+  trackerData,
+  theme,
+  selectTheme,
+  saveJournal,
+  unclaimedChests,
+  openChest,
+  enterFocusChamber,
 }) {
-  // Format selectedDate for display (e.g. "June 28, 2026")
+  const [habitName, setHabitName] = useState('');
+  const [selectedTag, setSelectedTag] = useState('Mind');
+  const [localJournal, setLocalJournal] = useState('');
+  const [saveStatus, setSaveStatus] = useState('Idle');
+  const [showFormForce, setShowFormForce] = useState(false);
+
+  // Pop indicators
+  const [animatingXp, setAnimatingXp] = useState({});
+  const [unlockedReward, setUnlockedReward] = useState(null);
+
+  // Format selectedDate for display
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const formattedDate = dateObj.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -21,102 +39,502 @@ export default function Checklist({
 
   const isFuture = selectedDate > todayStr;
 
+  // Sync log logs
+  useEffect(() => {
+    setLocalJournal(selectedDayData._journal || '');
+    setSaveStatus('Idle');
+  }, [selectedDate, selectedDayData._journal]);
+
+  // Derived math indicators
+  const powerRating = useMemo(() => {
+    return calculateUnifiedPowerRating(trackerData, allHabits);
+  }, [trackerData, allHabits]);
+
+  const riskAnalysis = useMemo(() => {
+    return analyzeBehavioralRisk(trackerData, allHabits);
+  }, [trackerData, allHabits]);
+
+  const playPopSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(450, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch (e) {
+      console.warn("AudioContext failed to start:", e);
+    }
+  };
+
+  const playChestSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5 notes
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.1 + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.1);
+        osc.stop(ctx.currentTime + idx * 0.1 + 0.25);
+      });
+    } catch (e) {
+      console.warn("AudioContext failed:", e);
+    }
+  };
+
+  const handleToggle = (habitId, isCurrentlyCompleted) => {
+    playPopSound();
+    if (!isCurrentlyCompleted) {
+      setAnimatingXp(prev => ({ ...prev, [habitId]: true }));
+      setTimeout(() => {
+        setAnimatingXp(prev => ({ ...prev, [habitId]: false }));
+      }, 1000);
+    }
+    toggleHabit(habitId);
+  };
+
+  const handleOpenChest = (chest) => {
+    playChestSound();
+    setUnlockedReward({
+      habitLabel: chest.habitLabel,
+      streak: chest.streak
+    });
+    openChest(chest.id);
+  };
+
+  const handleJournalBlur = () => {
+    if (selectedDayData._journal !== localJournal) {
+      triggerJournalSave();
+    }
+  };
+
+  const triggerJournalSave = async () => {
+    setSaveStatus('Saving');
+    await saveJournal(localJournal);
+    setSaveStatus('Saved');
+    setTimeout(() => setSaveStatus('Idle'), 2000);
+  };
+
+  const handleCreateHabit = (e) => {
+    e.preventDefault();
+    if (!habitName.trim()) return;
+    addCustomHabit(habitName, selectedTag);
+    setHabitName('');
+    setShowFormForce(false);
+  };
+
+  const exportBackup = () => {
+    const backup = {
+      trackerData: trackerData,
+      globalHabits: allHabits,
+      theme: theme,
+      exportedAt: new Date().toISOString()
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "habitpulse_backup.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const colors = {
+    emerald: {
+      accent: 'emerald',
+      text: 'text-emerald-400',
+      bg: 'bg-emerald-500',
+      border: 'border-emerald-500/20',
+      fill: 'bg-emerald-500/10',
+      hover: 'hover:bg-emerald-400',
+      shadow: 'shadow-emerald-500/10',
+    },
+    purple: {
+      accent: 'purple',
+      text: 'text-purple-400',
+      bg: 'bg-purple-500',
+      border: 'border-purple-500/20',
+      fill: 'bg-purple-500/10',
+      hover: 'hover:bg-purple-400',
+      shadow: 'shadow-purple-500/10',
+    },
+    blue: {
+      accent: 'blue',
+      text: 'text-blue-400',
+      bg: 'bg-blue-500',
+      border: 'border-blue-500/20',
+      fill: 'bg-blue-500/10',
+      hover: 'hover:bg-blue-400',
+      shadow: 'shadow-blue-500/10',
+    }
+  };
+
+  const activeColor = colors[theme] || colors.emerald;
+
   return (
-    <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md space-y-6">
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md space-y-6 relative">
+      
+      {/* Dynamic Golden Fullscreen Achievement Banner */}
+      {unlockedReward && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="relative max-w-sm w-full bg-zinc-900 border-2 border-amber-500/40 rounded-3xl p-8 text-center space-y-6 shadow-[0_0_50px_rgba(245,158,11,0.25)] overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500"></div>
+            <div className="text-5xl animate-bounce">🏆</div>
+            <div className="space-y-2">
+              <h2 className="text-base font-extrabold text-amber-400 font-mono tracking-widest uppercase">
+                SYSTEM CHEST UNLOCKED
+              </h2>
+              <p className="text-[10px] text-zinc-500 font-mono">
+                TELEMETRY CHAIN REWARD GRANTED
+              </p>
+              <p className="text-xs font-bold text-zinc-200 mt-4 font-mono uppercase bg-zinc-950/60 py-2.5 border border-zinc-850 rounded-xl">
+                {unlockedReward.habitLabel} &bull; {unlockedReward.streak}-Day Chain
+              </p>
+            </div>
+            
+            <div className="text-2xl font-black text-amber-300 font-mono tracking-wide animate-pulse">
+              +100 XP RECEIVED
+            </div>
+            
+            <button
+              onClick={() => setUnlockedReward(null)}
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-black rounded-xl text-xs uppercase tracking-widest transition cursor-pointer active:scale-95 shadow-lg shadow-amber-500/20"
+            >
+              COLLECT telemetry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Theme Selector config panel */}
+      <div className="space-y-2 pb-4 border-b border-zinc-800/60">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Accent Channel</span>
+          <span className={`text-[10px] font-mono font-bold ${activeColor.text} uppercase`}>{theme}</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/60 border border-zinc-850 rounded-xl">
+          {['emerald', 'purple', 'blue'].map((t) => (
+            <button
+              key={t}
+              onClick={() => selectTheme(t)}
+              className={`py-1 rounded-lg text-[9px] font-mono font-bold uppercase transition cursor-pointer ${
+                theme === t
+                  ? t === 'purple'
+                    ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+                    : t === 'blue'
+                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                    : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                  : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+              }`}
+            >
+              {t === 'emerald' ? 'Emerald' : t === 'purple' ? 'Purple' : 'Sapphire'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Exponential Moving Average (EMA) Unified Power Rating indicator */}
+      <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl flex items-center justify-between gap-4 font-mono relative overflow-hidden">
+        <div className="flex flex-col text-left">
+          <span className="text-[9px] text-zinc-555 text-zinc-500 uppercase font-black tracking-widest">// UPR Telemetry</span>
+          <span className="text-xs text-zinc-400 font-bold mt-1">EMA Velocity Rating</span>
+        </div>
+        <div className="flex flex-col items-end">
+          <span className={`text-2xl font-mono font-black ${
+            powerRating >= 750 ? 'text-emerald-400' : powerRating >= 400 ? 'text-cyan-400' : 'text-zinc-400'
+          }`}>
+            {powerRating}
+          </span>
+          <span className="text-[8px] text-zinc-500 mt-0.5">/ 1000 UPR</span>
+        </div>
+      </div>
+
+      {/* Unclaimed Rewards Chest Sidebar Widget */}
+      {unclaimedChests.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/5 to-yellow-500/5 border border-amber-500/30 rounded-xl p-4 space-y-3 relative overflow-hidden animate-fade-in">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] text-amber-500 font-mono font-black uppercase tracking-widest">// Unclaimed Rewards</span>
+            <span className="px-1.5 py-0.5 text-[8px] font-mono font-extrabold bg-amber-500 text-zinc-950 rounded">
+              {unclaimedChests.length} Chests
+            </span>
+          </div>
+          
+          <div className="space-y-2.5">
+            {unclaimedChests.map((chest) => (
+              <div key={chest.id} className="flex items-center justify-between bg-zinc-950/60 border border-zinc-850 p-2.5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl animate-pulse">🎁</span>
+                  <div className="flex flex-col text-left">
+                    <span className="text-[10px] font-bold text-zinc-200 font-mono truncate max-w-[120px]">
+                      {chest.habitLabel}
+                    </span>
+                    <span className="text-[8px] text-zinc-500 font-mono uppercase">
+                      {chest.streak}d Streak Reward
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleOpenChest(chest)}
+                  className="px-2.5 py-1 text-[9px] font-mono font-bold uppercase rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 transition cursor-pointer active:scale-95"
+                >
+                  Decrypt
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Streak Risk Assessment alerting element */}
+      {riskAnalysis && (
+        <div className="bg-red-500/5 border border-red-500/25 rounded-xl p-4 space-y-2 relative overflow-hidden animate-fade-in font-mono">
+          <div className="flex items-center gap-2">
+            <span className="text-red-400">⚠️</span>
+            <span className="text-[9px] text-red-400 font-black uppercase tracking-widest">
+              Streak Risk Assessment
+            </span>
+          </div>
+          <p className="text-[10px] text-zinc-400 leading-relaxed text-left">
+            Analysis indicates logging frequency on <span className="text-red-300 font-bold">{riskAnalysis.dayName}s</span> drops below 50% (currently <span className="text-red-300 font-black">{riskAnalysis.percentage}%</span>). Protect your active momentum!
+          </p>
+        </div>
+      )}
+
+      {/* Focus Chamber Launcher */}
+      {!isFuture && allHabits.length > 0 && (
+        <div className="pt-1">
+          <button
+            onClick={enterFocusChamber}
+            className={`w-full py-2.5 font-mono font-black uppercase text-[9px] tracking-widest rounded-xl transition cursor-pointer border ${
+              theme === 'purple'
+                ? 'bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-zinc-950 border-purple-500/30'
+                : theme === 'blue'
+                ? 'bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-zinc-950 border-blue-500/30'
+                : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-zinc-950 border-emerald-500/30'
+            } active:scale-95 shadow-md`}
+          >
+            🛰️ LAUNCH FOCUS CHAMBER
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Active Habits</h2>
-          <p className="text-lg font-bold text-zinc-100 mt-1">{formattedDate}</p>
+          <h2 className="text-xs font-semibold font-mono text-zinc-400 uppercase tracking-widest">// Log Targets</h2>
+          <p className="text-lg font-bold text-zinc-100 mt-1 font-mono">{formattedDate}</p>
         </div>
         {isFuture && (
-          <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-md bg-zinc-950/60 text-zinc-500 border border-zinc-800/80 flex items-center gap-1 select-none">
+          <span className="px-2.5 py-1 text-[9px] font-mono font-bold uppercase rounded bg-zinc-950/60 text-zinc-500 border border-zinc-850 flex items-center gap-1 select-none">
             🔒 Locked
           </span>
         )}
       </div>
 
       {isFuture && (
-        <div className="px-3.5 py-2.5 rounded-xl bg-zinc-950/40 border border-zinc-900/60 text-zinc-500 text-xs text-center font-medium select-none">
+        <div className="px-3.5 py-2.5 rounded-xl bg-zinc-950/40 border border-zinc-900/60 text-zinc-650 text-xs text-center font-mono select-none">
           Data Integrity Lock: Future logging is disabled.
         </div>
       )}
 
-      <div className="space-y-3">
-        {allHabits.map((habit) => {
-          const isCompleted = !!selectedDayData[habit.id];
-          const isCustom = habit.id.startsWith('custom_');
+      {/* Onboarding Empty Slate Illustration */}
+      {allHabits.length === 0 && !showFormForce ? (
+        <div className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-4 border border-dashed border-zinc-805 border-zinc-800 rounded-xl bg-zinc-950/20">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-2xl relative shadow-inner">
+            <Sparkles className={`w-6 h-6 ${activeColor.text}`} />
+            <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full ${activeColor.bg} animate-pulse`}></div>
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-xs font-bold font-mono text-zinc-200">Empty Slate</h3>
+            <p className="text-[10px] text-zinc-500 max-w-[200px] leading-relaxed font-mono">
+              Your productivity is a blank canvas. Let's create your first customizable habit.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowFormForce(true)}
+            className={`px-4 py-2 text-xs font-mono font-bold uppercase rounded-xl transition ${activeColor.bg} hover:opacity-90 text-zinc-950 ${activeColor.shadow} shadow-lg cursor-pointer active:scale-95`}
+          >
+            Create Custom Habit
+          </button>
+        </div>
+      ) : (
+        /* Habits Checklist with spring popped scaling and audio pop */
+        <div className="space-y-3">
+          {allHabits.map((habit) => {
+            const isCompleted = !!selectedDayData[habit.id];
+            const { currentStreak, longestStreak } = calculateStreak(habit.id, trackerData, todayStr);
 
-          const itemClass = isFuture
-            ? 'opacity-20 bg-zinc-950/20 border-zinc-900/50 cursor-not-allowed'
-            : isCompleted
-            ? 'bg-emerald-500/5 border-emerald-500/30 text-zinc-100'
-            : 'bg-zinc-900/40 border-zinc-800/60 text-zinc-400 hover:border-zinc-700';
+            const activeText = theme === 'purple' ? 'text-purple-400' : theme === 'blue' ? 'text-blue-400' : 'text-emerald-400';
+            const activeBorder = theme === 'purple' ? 'border-purple-500/30' : theme === 'blue' ? 'border-blue-500/30' : 'border-emerald-500/30';
+            const activeFill = theme === 'purple' ? 'bg-purple-500/5' : theme === 'blue' ? 'bg-blue-500/5' : 'bg-emerald-500/5';
+            
+            const itemClass = isFuture
+              ? 'opacity-20 bg-zinc-950/20 border-zinc-900/50 cursor-not-allowed'
+              : isCompleted
+              ? `${activeFill} ${activeBorder} text-zinc-100 ${animatingXp[habit.id] ? 'animate-spring-pop' : ''}`
+              : 'bg-zinc-900/40 border-zinc-800/60 text-zinc-400 hover:border-zinc-700';
 
-          const buttonClass = isFuture
-            ? 'cursor-not-allowed flex items-center gap-3.5 flex-1 text-left'
-            : 'cursor-pointer flex items-center gap-3.5 flex-1 text-left';
+            const buttonClass = isFuture
+              ? 'cursor-not-allowed flex items-center gap-3.5 flex-1 text-left relative'
+              : 'cursor-pointer flex items-center gap-3.5 flex-1 text-left relative';
 
-          return (
-            <div
-              key={habit.id}
-              className={`group flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 ${itemClass}`}
-            >
-              <button
-                onClick={() => !isFuture && toggleHabit(habit.id)}
-                disabled={isFuture}
-                className={buttonClass}
+            return (
+              <div
+                key={habit.id}
+                className={`group flex items-center justify-between p-3.5 rounded-xl border transition-all duration-205 hover:scale-[1.01] ${itemClass}`}
               >
-                <div
-                  className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-all ${
-                    isFuture
-                      ? 'border-zinc-800 text-zinc-700 bg-zinc-950/30'
-                      : isCompleted
-                      ? 'bg-emerald-500 border-emerald-400 text-zinc-950'
-                      : 'border-zinc-700 group-hover:border-zinc-500'
-                  }`}
-                >
-                  {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                </div>
-                <span className={`text-sm font-medium transition-all ${isFuture ? 'text-zinc-600' : isCompleted ? 'text-zinc-400 line-through opacity-80' : 'text-zinc-200'}`}>
-                  {habit.label}
-                </span>
-              </button>
-
-              {isCustom && !isFuture && (
                 <button
-                  onClick={() => removeCustomHabit(habit.id)}
-                  className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer"
-                  title="Remove Custom Habit"
+                  onClick={() => !isFuture && handleToggle(habit.id, isCompleted)}
+                  disabled={isFuture}
+                  className={buttonClass}
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+                  {/* Floating +10 XP text overlay */}
+                  {animatingXp[habit.id] && (
+                    <span className={`absolute left-7 -top-4 text-[10px] font-black ${activeText} font-mono tracking-wider animate-xp-float select-none`}>
+                      +10 XP
+                    </span>
+                  )}
 
-        {allHabits.length === 0 && (
-          <p className="text-sm text-zinc-500 text-center py-4">No habits set up yet.</p>
-        )}
+                  <div
+                    className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-all ${
+                      isFuture
+                        ? 'border-zinc-800 text-zinc-700 bg-zinc-950/30'
+                        : isCompleted
+                        ? `${activeColor.bg} border-zinc-400 text-zinc-950`
+                        : 'border-zinc-700 group-hover:border-zinc-500'
+                    }`}
+                  >
+                    {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold font-mono tracking-tight transition-all ${isFuture ? 'text-zinc-650' : isCompleted ? 'text-zinc-500 line-through opacity-80' : 'text-zinc-200'}`}>
+                        {habit.label}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-[8px] font-mono font-extrabold uppercase rounded bg-zinc-950/80 text-zinc-500 border border-zinc-850">
+                        {habit.tag || 'General'}
+                      </span>
+                    </div>
+                    {!isFuture && (currentStreak > 0 || longestStreak > 0) && (
+                      <span className={`text-[10px] ${activeText} font-mono font-bold flex items-center gap-1 mt-0.5 opacity-85`}>
+                        🔥 {currentStreak}d streak <span className="text-zinc-800">&bull;</span> max {longestStreak}d
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {!isFuture && (
+                  <button
+                    onClick={() => removeCustomHabit(habit.id)}
+                    className="p-1 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer"
+                    title="Remove Custom Habit"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Advanced Habit Creation Form */}
+      {(allHabits.length > 0 || showFormForce) && (
+        <form onSubmit={handleCreateHabit} className={`space-y-3 pt-4 border-t border-zinc-800/60 ${isFuture ? 'opacity-20 cursor-not-allowed' : ''}`}>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={habitName}
+              onChange={(e) => !isFuture && setHabitName(e.target.value)}
+              disabled={isFuture}
+              placeholder={isFuture ? "Locked..." : "Habit label..."}
+              className={`flex-1 bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2 text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 transition ${isFuture ? 'cursor-not-allowed' : ''}`}
+            />
+            <button
+              type="submit"
+              disabled={isFuture}
+              className={`p-2.5 rounded-xl transition ${isFuture ? 'cursor-not-allowed bg-zinc-950/20 text-zinc-700 border border-zinc-900' : `${activeColor.bg} ${activeColor.hover} text-zinc-950 cursor-pointer active:scale-95 font-mono font-extrabold uppercase text-[10px] ${activeColor.shadow} shadow-lg`}`}
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+
+          {/* Category Tag Selection */}
+          <div className="flex items-center gap-1.5 p-1 bg-zinc-950/40 border border-zinc-850 rounded-xl">
+            {['Mind', 'Body', 'Craft'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                disabled={isFuture}
+                onClick={() => setSelectedTag(t)}
+                className={`flex-1 py-1 rounded-lg text-[9px] font-mono font-bold uppercase transition ${isFuture ? 'cursor-not-allowed' : 'cursor-pointer'} ${
+                  selectedTag === t
+                    ? theme === 'purple'
+                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                      : theme === 'blue'
+                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'text-zinc-600 hover:text-zinc-400 border border-transparent'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </form>
+      )}
+
+      {/* Client Data Journaling Layer */}
+      <div className="space-y-2 pt-4 border-t border-zinc-800/60">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono">
+            // Daily Focus logs
+          </label>
+          {saveStatus !== 'Idle' && (
+            <span className={`text-[9px] font-mono font-bold ${saveStatus === 'Saving' ? 'text-zinc-500 animate-pulse' : activeColor.text}`}>
+              {saveStatus === 'Saving' ? 'SYNCING...' : 'SAVED ✓'}
+            </span>
+          )}
+        </div>
+        <textarea
+          value={localJournal}
+          onChange={(e) => setLocalJournal(e.target.value)}
+          onBlur={handleJournalBlur}
+          placeholder="Log key insights, focal targets, or blocker issues..."
+          className="w-full min-h-[70px] bg-zinc-950/60 border border-zinc-850 rounded-xl p-3 text-xs font-mono text-zinc-200 placeholder-zinc-705 focus:outline-none focus:border-zinc-700 transition resize-none leading-relaxed"
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={triggerJournalSave}
+            className="text-[9px] font-mono font-bold px-2.5 py-1 rounded bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer uppercase"
+          >
+            Save Logs
+          </button>
+        </div>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); if (!isFuture) addCustomHabit(e); }} className={`flex gap-2 pt-2 border-t border-zinc-800/60 ${isFuture ? 'opacity-20 cursor-not-allowed' : ''}`}>
-        <input
-          type="text"
-          value={customHabitInput}
-          onChange={(e) => !isFuture && setCustomHabitInput(e.target.value)}
-          disabled={isFuture}
-          placeholder={isFuture ? "Locked..." : "Create custom habit..."}
-          className={`flex-1 bg-zinc-900/60 border border-zinc-800/80 rounded-xl px-3.5 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 transition ${isFuture ? 'cursor-not-allowed' : ''}`}
-        />
+      {/* Data Portability Engine */}
+      <div className="pt-4 border-t border-zinc-800/60 flex items-center justify-between gap-4">
+        <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono">// Datapack</span>
         <button
-          type="submit"
-          disabled={isFuture}
-          className={`p-2.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold rounded-xl transition shadow-lg shadow-emerald-500/10 flex items-center justify-center ${isFuture ? 'cursor-not-allowed bg-emerald-950/20 text-zinc-700 shadow-none border border-zinc-900' : 'cursor-pointer'}`}
+          onClick={exportBackup}
+          className="text-xs font-bold px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition cursor-pointer flex items-center gap-1.5 active:scale-95"
         >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
+          📥 Backup Dataset
         </button>
-      </form>
+      </div>
     </div>
   );
 }

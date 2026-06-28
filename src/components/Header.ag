@@ -1,25 +1,105 @@
-export default function Header() {
+export default function Header({ user, loginWithGoogle, logoutUser, isAuthLoading, characterStats }) {
+  const { level, currentXp, xpNeeded, title, rankGlow } = characterStats || {
+    level: 1,
+    currentXp: 0,
+    xpNeeded: 100,
+    title: 'Wandering Novice',
+    rankGlow: 'wandering-novice-glow'
+  };
+
   return (
-    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10 pb-6 border-b border-zinc-805/80 border-zinc-800/80">
+    <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 pb-6 border-b border-zinc-800/80 relative">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-emerald-300 to-teal-500 bg-clip-text text-transparent">
-            ⚡ HabitPulse
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase font-mono">
+            ⚡ HabitPulse // HUD
           </h1>
-          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold tracking-wider rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-            <span className="live-pulse-dot"></span> Live
+          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold tracking-wider rounded bg-zinc-900 border border-emerald-500/30 text-emerald-400 uppercase">
+            <span className="live-pulse-dot"></span> Core System Online
           </span>
         </div>
-        <p className="text-sm text-zinc-400 mt-1">
-          High-performance, minimalist daily habit logging and velocity analytics.
+        <p className="text-xs text-zinc-500 mt-1.5 font-mono uppercase tracking-wide">
+          Cybernetic performance tracking, granular telemetry & experience progression.
         </p>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          v2.0-Alpha
-        </span>
-        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> LocalStorage Interlocked
+
+      <div className="flex items-center gap-4">
+        {isAuthLoading ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-zinc-900/60 border border-zinc-800 text-zinc-500 text-[10px] font-mono uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-700 animate-pulse"></span>
+            Syncing Telemetry...
+          </div>
+        ) : user ? (
+          /* Character Telemetry Panel with rank-based dynamic neon glow */
+          <div className={`flex items-center gap-4 bg-zinc-950/60 border border-zinc-800 p-2.5 pr-4 rounded-xl transition-all duration-500 ${rankGlow}`}>
+            <div className="relative">
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName || "Avatar"}
+                  className="w-10 h-10 rounded-lg object-cover border border-zinc-700 relative z-10"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-zinc-900 text-zinc-400 border border-zinc-700 flex items-center justify-center text-sm font-bold relative z-10 font-mono">
+                  {user.displayName ? user.displayName.charAt(0) : "U"}
+                </div>
+              )}
+              {/* Level indicator badge overlay */}
+              <div className="absolute -bottom-1.5 -right-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 text-[8px] font-extrabold px-1 rounded z-20 font-mono">
+                L{level}
+              </div>
+            </div>
+            
+            <div className="flex flex-col text-left min-w-[140px] space-y-1">
+              <div className="flex items-center justify-between gap-2 leading-none">
+                <span className="text-xs font-bold text-zinc-200 truncate max-w-[100px] font-mono">
+                  {user.displayName || "User"}
+                </span>
+                <span className="text-[8px] text-zinc-500 font-mono uppercase tracking-wider">
+                  {currentXp}/{xpNeeded} XP
+                </span>
+              </div>
+              
+              {/* Telemetry rank title */}
+              <span className={`text-[8px] font-extrabold uppercase tracking-widest leading-none ${
+                level >= 26 ? 'text-amber-400' : level >= 13 ? 'text-fuchsia-400' : level >= 6 ? 'text-cyan-400' : 'text-emerald-400'
+              }`}>
+                ⚔️ {title}
+              </span>
+              
+              {/* Experience Progress Bar */}
+              <div className="w-full h-1 bg-zinc-900 border border-zinc-850 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-500 rounded-full ${
+                    level >= 26 ? 'bg-gradient-to-r from-pink-500 to-amber-500' : level >= 13 ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500' : level >= 6 ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                  }`}
+                  style={{ width: `${(currentXp / xpNeeded) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="w-px h-8 bg-zinc-800 mx-1"></div>
+            
+            <button
+              onClick={logoutUser}
+              className="text-[10px] font-mono font-bold text-zinc-500 hover:text-red-400 transition cursor-pointer uppercase tracking-wider"
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          /* Sign In Button */
+          <button
+            onClick={loginWithGoogle}
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold font-mono uppercase rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition cursor-pointer active:scale-95 shadow-md"
+          >
+            Authenticate Link
+          </button>
+        )}
+
+        <span className="hidden sm:inline-flex px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded-xl bg-zinc-900/60 border border-zinc-800 text-zinc-500 items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Local Interlock
         </span>
       </div>
     </header>
