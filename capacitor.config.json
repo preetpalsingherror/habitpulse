@@ -1,6 +1,6 @@
 {
   "appId": "com.habitpulse.warriorapp",
-  "appName": "UPLIFE",
+  "appName": "LEVELING UP",
   "webDir": "dist",
   "plugins": {
     "FirebaseAuthentication": {

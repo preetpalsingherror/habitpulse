@@ -37,7 +37,7 @@ export default function Header({
       <div>
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 bg-clip-text text-transparent uppercase font-mono">
-            ⚡ UPLIFE // SYSTEM
+            ⚡ LEVELING UP // SYSTEM
           </h1>
           <span className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold tracking-wider rounded bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 uppercase">
             <span className="live-pulse-dot bg-cyan-400"></span> System Active
