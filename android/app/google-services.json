@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "699242330893",
+    "project_id": "habitpulse-e849f",
+    "storage_bucket": "habitpulse-e849f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:699242330893:android:0de0d0d38eb745af480e44",
+        "android_client_info": {
+          "package_name": "com.habitpulse.warriorapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "699242330893-85o1j2jrf6bmmes5c46t5o74psdqc08i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4QPZsJQBGtbd1l1e7WNiaTCgxWpDRHbg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "699242330893-85o1j2jrf6bmmes5c46t5o74psdqc08i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
