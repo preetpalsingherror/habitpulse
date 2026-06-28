@@ -7,12 +7,20 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:699242330893:android:0de0d0d38eb745af480e44",
+        "mobilesdk_app_id": "1:699242330893:android:77a5769ff80be362480e44",
         "android_client_info": {
           "package_name": "com.habitpulse.warriorapp"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "699242330893-0b648isbooci6uhqhq4tjt9cu4vsfk8b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.habitpulse.warriorapp",
+            "certificate_hash": "82c05d5dc139a9a43b567998777bf8c1971a55ff"
+          }
+        },
         {
           "client_id": "699242330893-85o1j2jrf6bmmes5c46t5o74psdqc08i.apps.googleusercontent.com",
           "client_type": 3
