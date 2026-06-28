@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">HabitPulse</string>
-    <string name="title_activity_main">HabitPulse</string>
+    <string name="app_name">UPLIFE</string>
+    <string name="title_activity_main">UPLIFE</string>
     <string name="package_name">com.habitpulse.warriorapp</string>
     <string name="custom_url_scheme">com.habitpulse.warriorapp</string>
 </resources>
