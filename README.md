@@ -4,7 +4,7 @@ HabitPulse is a high-performance, minimalist daily habit logging and analytics d
 
 The application provides granular tracking matrices for daily routines, dynamic custom metric ingestion, and visual trailing completion curves.
 
-Live Deployment: [PASTE YOUR VERCEL LINK HERE]
+Live Deployment: https://habitpulse-gamma.vercel.app/
 
 ---
 
