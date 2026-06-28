@@ -1,0 +1,27 @@
+export default function Header() {
+  return (
+    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10 pb-6 border-b border-zinc-805/80 border-zinc-800/80">
+      <div>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-emerald-300 to-teal-500 bg-clip-text text-transparent">
+            ⚡ HabitPulse
+          </h1>
+          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold tracking-wider rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
+            <span className="live-pulse-dot"></span> Live
+          </span>
+        </div>
+        <p className="text-sm text-zinc-400 mt-1">
+          High-performance, minimalist daily habit logging and velocity analytics.
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          v2.0-Alpha
+        </span>
+        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> LocalStorage Interlocked
+        </span>
+      </div>
+    </header>
+  );
+}

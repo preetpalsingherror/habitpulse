@@ -1,0 +1,64 @@
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+
+export default function Calendar({ currentMonth, changeMonth, calendarDays, selectedDate, setSelectedDate, trackerData, allHabits, todayStr }) {
+  return (
+    <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2.5">
+          <CalendarIcon className="text-emerald-400 w-4 h-4"/>
+          <h2 className="text-sm font-semibold text-zinc-200">
+            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h2>
+        </div>
+        <div className="flex gap-1.5 bg-zinc-900/80 border border-zinc-800 p-1 rounded-xl">
+          <button onClick={() => changeMonth(-1)} className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition cursor-pointer"><ChevronLeft className="w-4 h-4"/></button>
+          <button onClick={() => changeMonth(1)} className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-lg transition cursor-pointer"><ChevronRight className="w-4 h-4"/></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 text-center text-xs font-medium text-zinc-600 mb-3">
+        <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2">
+        {calendarDays.map((day, index) => {
+          if (!day) return <div key={`empty-${index}`} className="aspect-square" />;
+          
+          const isSelected = day.dateStr === selectedDate;
+          const isFuture = day.dateStr > todayStr;
+          const dayLogs = trackerData[day.dateStr] || {};
+          const completedCount = allHabits.filter(h => dayLogs[h.id]).length;
+          const totalHabits = allHabits.length;
+          
+          let colorState = "bg-zinc-900/50 text-zinc-400 border-zinc-800/30";
+          if (isFuture) {
+            colorState = "opacity-20 bg-zinc-950/20 text-zinc-600 border-zinc-900/50 cursor-not-allowed";
+          } else if (completedCount > 0) {
+            const ratio = completedCount / totalHabits;
+            if (ratio <= 0.34) colorState = "bg-emerald-950/30 text-emerald-400 border-emerald-900/20";
+            else if (ratio <= 0.67) colorState = "bg-emerald-900/20 text-emerald-300 border-emerald-800/30";
+            else colorState = "bg-emerald-500/10 text-emerald-200 border-emerald-500/20";
+          }
+
+          const buttonClass = isSelected && !isFuture
+            ? 'bg-emerald-500 text-zinc-950 font-bold border-emerald-400 shadow-lg shadow-emerald-500/10 scale-105 cursor-pointer'
+            : `${colorState} ${isFuture ? '' : 'hover:border-zinc-700 hover:bg-zinc-800/30 cursor-pointer'}`;
+
+          return (
+            <button
+              key={day.dateStr}
+              onClick={() => !isFuture && setSelectedDate(day.dateStr)}
+              disabled={isFuture}
+              className={`aspect-square flex flex-col items-center justify-between p-2 rounded-xl border text-xs font-medium transition-all duration-150 ${buttonClass}`}
+            >
+              <span>{day.dayNumber}</span>
+              {!isSelected && completedCount > 0 && !isFuture && (
+                <span className="text-[9px] opacity-60 font-semibold">{completedCount}/{totalHabits}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

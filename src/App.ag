@@ -1,0 +1,141 @@
+import { useState, useMemo, useEffect } from 'antigravity';
+import Header from './components/Header';
+import Calendar from './components/Calendar';
+import Analytics from './components/Analytics';
+import Checklist from './components/Checklist';
+
+export default function App() {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [customHabitInput, setCustomHabitInput] = useState('');
+  
+  const [trackerData, setTrackerData] = useState(() => {
+    const saved = localStorage.getItem('ag_tracker_data');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [customHabits, setCustomHabits] = useState(() => {
+    const saved = localStorage.getItem('ag_global_habits');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ag_tracker_data', JSON.stringify(trackerData));
+  }, [trackerData]);
+
+  useEffect(() => {
+    localStorage.setItem('ag_global_habits', JSON.stringify(customHabits));
+  }, [customHabits]);
+
+  const coreHabits = useMemo(() => [
+    { id: 'study', label: 'Did I study today?' },
+    { id: 'water', label: 'Did I drink enough water?' },
+    { id: 'gym', label: 'Did I go to the gym today?' },
+    { id: 'steps', label: 'Did I walk 10k steps?' }
+  ], []);
+
+  const allHabits = useMemo(() => [...coreHabits, ...customHabits], [coreHabits, customHabits]);
+
+  const toggleHabit = (habitId) => {
+    setTrackerData(prev => {
+      const dayData = prev[selectedDate] || {};
+      return { ...prev, [selectedDate]: { ...dayData, [habitId]: !dayData[habitId] } };
+    });
+  };
+
+  const addCustomHabit = (e) => {
+    e.preventDefault();
+    if (!customHabitInput.trim()) return;
+    const newId = `custom_${Date.now()}`;
+    setCustomHabits(prev => [...prev, { id: newId, label: customHabitInput.trim() }]);
+    setCustomHabitInput('');
+  };
+
+  const removeCustomHabit = (id) => {
+    setCustomHabits(prev => prev.filter(h => h.id !== id));
+    setTrackerData(prev => {
+      const updated = { ...prev };
+      if (updated[selectedDate]) delete updated[selectedDate][id];
+      return updated;
+    });
+  };
+
+  const changeMonth = (direction) => {
+    setCurrentMonth(prev => {
+      const newMonth = new Date(prev);
+      newMonth.setMonth(newMonth.getMonth() + direction);
+      return newMonth;
+    });
+  };
+
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const calendarDays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const days = new Array(new Date(year, month, 1).getDay()).fill(null);
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    
+    for (let i = 1; i <= totalDays; i++) {
+      const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      days.push({ dayNumber: i, dateStr: dayStr });
+    }
+    return days;
+  }, [currentMonth]);
+
+  const chartData = useMemo(() => {
+    const data = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayData = trackerData[dateStr] || {};
+      
+      const totalChecksPossible = allHabits.length;
+      const checksCompleted = allHabits.filter(h => dayData[h.id]).length;
+      const percentage = totalChecksPossible > 0 ? Math.round((checksCompleted / totalChecksPossible) * 100) : 0;
+
+      data.push({
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        Completion: percentage
+      });
+    }
+    return data;
+  }, [trackerData, allHabits]);
+
+  return (
+    <div className="min-h-screen text-zinc-100 p-4 md:p-12 antialiased selection:bg-emerald-500/10 selection:text-emerald-400">
+      <div className="max-w-6xl mx-auto">
+        <Header/>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="lg:col-span-2 space-y-8">
+            <Calendar 
+              allHabits={allHabits} 
+              calendarDays={calendarDays} 
+              changeMonth={changeMonth} 
+              currentMonth={currentMonth} 
+              selectedDate={selectedDate} 
+              setSelectedDate={setSelectedDate} 
+              trackerData={trackerData}
+              todayStr={todayStr}
+            />
+            <Analytics chartData={chartData}/>
+          </div>
+          <div>
+            <Checklist 
+              addCustomHabit={addCustomHabit} 
+              allHabits={allHabits} 
+              customHabitInput={customHabitInput} 
+              removeCustomHabit={removeCustomHabit} 
+              selectedDate={selectedDate} 
+              selectedDayData={trackerData[selectedDate] || {}} 
+              setCustomHabitInput={setCustomHabitInput} 
+              toggleHabit={toggleHabit}
+              todayStr={todayStr}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
