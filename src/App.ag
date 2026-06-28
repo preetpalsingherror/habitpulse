@@ -1,5 +1,13 @@
 import { useState, useMemo, useEffect } from 'antigravity';
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPhoneNumber,
+  RecaptchaVerifier
+} from "firebase/auth";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider, isFirebaseEnabled } from "./firebase";
 import Header from './components/Header';
@@ -16,6 +24,15 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(isFirebaseEnabled);
   const [dismissAuthCard, setDismissAuthCard] = useState(false);
   const [authError, setAuthError] = useState(null);
+
+  // Secure Gateway Tab Matrix States
+  const [authTab, setAuthTab] = useState('email'); // 'email' | 'phone'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
 
   // Focus Chamber state models
   const [isFocusActive, setIsFocusActive] = useState(false);
@@ -407,6 +424,117 @@ export default function App() {
     }
   };
 
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setAuthError("Email and password fields are required.");
+      return;
+    }
+    
+    if (!isFirebaseEnabled) {
+      setUser({
+        uid: "mock_email_" + btoa(email).substring(0, 8),
+        displayName: email.split('@')[0],
+        email: email
+      });
+      setDismissAuthCard(true);
+      setAuthError("Firebase is disabled. Running in Mock Developer Sandbox Mode.");
+      return;
+    }
+
+    try {
+      setAuthError(null);
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      setDismissAuthCard(true);
+    } catch (err) {
+      console.error("Email auth error:", err);
+      setAuthError(err.message || "Email authentication failed.");
+    }
+  };
+
+  const setupRecaptcha = () => {
+    if (!window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        'size': 'invisible',
+        'callback': (response) => {
+          // reCAPTCHA solved
+        }
+      });
+    }
+  };
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    if (!phoneNumber.trim()) {
+      setAuthError("Phone number is required.");
+      return;
+    }
+
+    if (!isFirebaseEnabled) {
+      setOtpSent(true);
+      setAuthError("Firebase is disabled. Mock OTP code '123456' sent to " + phoneNumber);
+      return;
+    }
+
+    try {
+      setAuthError(null);
+      setupRecaptcha();
+      const appVerifier = window.recaptchaVerifier;
+      const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+      window.confirmationResult = confirmationResult;
+      setOtpSent(true);
+    } catch (err) {
+      console.error("Phone sign in error:", err);
+      setAuthError(err.message || "Failed to send SMS OTP.");
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = null;
+      }
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!otpCode.trim()) {
+      setAuthError("Verification code is required.");
+      return;
+    }
+
+    if (!isFirebaseEnabled) {
+      if (otpCode === "123456") {
+        setUser({
+          uid: "mock_phone_" + btoa(phoneNumber).substring(0, 8),
+          displayName: "Phone Warrior " + phoneNumber.slice(-4),
+          phoneNumber: phoneNumber
+        });
+        setDismissAuthCard(true);
+        setAuthError("Successfully signed in with mock OTP.");
+      } else {
+        setAuthError("Invalid verification code. Use '123456' for mock testing.");
+      }
+      return;
+    }
+
+    try {
+      setAuthError(null);
+      const confirmationResult = window.confirmationResult;
+      if (!confirmationResult) {
+        setAuthError("No active SMS transaction found. Please request a new OTP code.");
+        return;
+      }
+      const result = await confirmationResult.confirm(otpCode);
+      setUser(result.user);
+      setDismissAuthCard(true);
+    } catch (err) {
+      console.error("OTP Verification error:", err);
+      setAuthError(err.message || "Invalid verification code.");
+    }
+  };
+
   const loginWithGoogle = async () => {
     if (!isFirebaseEnabled) {
       setUser({
@@ -513,6 +641,10 @@ export default function App() {
   if (isFirebaseEnabled && !user && !dismissAuthCard) {
     return (
       <div className="min-h-screen text-zinc-100 flex items-center justify-center p-4 antialiased bg-zinc-950 selection:bg-emerald-500/10 selection:text-emerald-400">
+        
+        {/* Invisible Recaptcha Container required for Firebase SMS verification */}
+        <div id="recaptcha-container"></div>
+
         <div className="relative max-w-md w-full bg-zinc-900/30 border border-zinc-800/80 rounded-3xl p-8 backdrop-blur-md shadow-2xl text-center space-y-6 overflow-hidden">
           <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-emerald-500/10 blur-3xl"></div>
           <div className="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-teal-500/10 blur-3xl"></div>
@@ -522,33 +654,176 @@ export default function App() {
             <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
               HabitPulse
             </h1>
-            <p className="text-sm text-zinc-400">
-              Synchronize habits to the cloud or track offline with zero overhead.
+            <p className="text-xs text-zinc-400">
+              Multi-Provider Secure Gateway
             </p>
           </div>
 
-          <div className="py-4 relative z-10">
+          {/* Secure Gateway Tab Matrix Selector */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950/60 border border-zinc-850 rounded-xl relative z-10">
+            <button
+              onClick={() => { setAuthTab('email'); setAuthError(null); }}
+              className={`py-2 rounded-lg text-[10px] font-mono font-bold uppercase transition cursor-pointer ${
+                authTab === 'email'
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                  : 'text-zinc-500 hover:text-zinc-350 border border-transparent'
+              }`}
+            >
+              ✉️ Email System
+            </button>
+            <button
+              onClick={() => { setAuthTab('phone'); setAuthError(null); }}
+              className={`py-2 rounded-lg text-[10px] font-mono font-bold uppercase transition cursor-pointer ${
+                authTab === 'phone'
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                  : 'text-zinc-500 hover:text-zinc-355 border border-transparent'
+              }`}
+            >
+              📱 Phone OTP
+            </button>
+          </div>
+
+          {/* Error Banner inside gateway */}
+          {authError && (
+            <div className="px-3.5 py-2.5 rounded-xl bg-red-500/5 border border-red-500/20 text-red-400 text-[10px] text-center font-mono select-none leading-relaxed z-10 relative">
+              {authError}
+            </div>
+          )}
+
+          {/* Active Tab Form Container */}
+          <div className="space-y-4 relative z-10 text-left">
+            {authTab === 'email' ? (
+              <form onSubmit={handleEmailAuth} className="space-y-3.5">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">// Account Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="warrior@habitpulse.com"
+                    className="w-full bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-zinc-700 transition"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">// Cryptographic Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-zinc-700 transition"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 px-1 pt-1">
+                  <span>{isSignUp ? "Already have an account?" : "Need a new account?"}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setIsSignUp(!isSignUp); setAuthError(null); }}
+                    className="text-emerald-400 hover:text-emerald-300 transition cursor-pointer font-bold uppercase"
+                  >
+                    {isSignUp ? "Sign In" : "Register"}
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black rounded-xl text-xs uppercase tracking-widest transition cursor-pointer active:scale-95 shadow-lg shadow-emerald-500/10 text-center font-mono mt-2"
+                >
+                  {isSignUp ? "Create Account" : "Access Console"}
+                </button>
+              </form>
+            ) : (
+              /* Mobile Phone OTP validation matrix */
+              <div className="space-y-3.5">
+                {!otpSent ? (
+                  <form onSubmit={handleSendOtp} className="space-y-3.5">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">// Telephone Coordinates</label>
+                      <input
+                        type="tel"
+                        required
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="+1 555 123 4567"
+                        className="w-full bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-zinc-700 transition"
+                      />
+                      <span className="text-[8px] text-zinc-500 font-mono leading-relaxed block mt-1">
+                        Use full international dial coordinates prefix (e.g. +1).
+                      </span>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black rounded-xl text-xs uppercase tracking-widest transition cursor-pointer active:scale-95 shadow-lg shadow-emerald-500/10 text-center font-mono mt-2"
+                    >
+                      Send OTP Verification
+                    </button>
+                  </form>
+                ) : (
+                  /* Cryptographic 6-digit verification code input block */
+                  <form onSubmit={handleVerifyOtp} className="space-y-3.5">
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">// Verification Code</label>
+                        <button
+                          type="button"
+                          onClick={() => { setOtpSent(false); setAuthError(null); }}
+                          className="text-[9px] font-mono text-zinc-500 hover:text-zinc-350 cursor-pointer"
+                        >
+                          Change Number
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        maxLength={6}
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value)}
+                        placeholder="123456"
+                        className="w-full bg-zinc-950/60 border border-zinc-850 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-zinc-700 transition text-center tracking-widest text-lg"
+                      />
+                      <span className="text-[8px] text-zinc-500 font-mono leading-relaxed block mt-1">
+                        Enter the 6-digit SMS code dispatched to {phoneNumber}.
+                      </span>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black rounded-xl text-xs uppercase tracking-widest transition cursor-pointer active:scale-95 shadow-lg shadow-emerald-500/10 text-center font-mono mt-2"
+                    >
+                      Verify Token credentials
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Social Sep & Google Login */}
+          <div className="relative z-10 space-y-4">
+            <div className="relative flex items-center justify-center font-mono text-[9px] text-zinc-650 uppercase">
+              <div className="absolute inset-x-0 h-px bg-zinc-800/50"></div>
+              <span className="relative bg-zinc-900/40 px-3.5 z-10 font-black tracking-widest">// OR CONTROLLER</span>
+            </div>
+
             <button
               onClick={loginWithGoogle}
-              className="w-full relative group py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-bold transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/20 cursor-pointer overflow-hidden"
-              style={{
-                animation: "pulse-emerald 2.5s infinite"
-              }}
+              className="w-full py-3 px-4 rounded-xl border border-zinc-850 hover:border-zinc-750 bg-zinc-950/40 hover:bg-zinc-955/80 hover:bg-zinc-950/80 text-zinc-300 hover:text-zinc-100 text-xs transition cursor-pointer active:scale-95 font-mono uppercase tracking-wider flex items-center justify-center gap-2"
             >
-              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span className="relative flex items-center justify-center gap-3">
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.51 0-6.377-2.87-6.377-6.38s2.867-6.38 6.377-6.38c1.6 0 3.05.59 4.178 1.57l3.079-3.08C19.4 2.73 16.03 1.5 12.24 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.24s4.77 10.74 10.74 10.74c5.96 0 10.66-4.73 10.66-10.74 0-.64-.06-1.28-.18-1.9H12.24z"/>
-                </svg>
-                Sign In with Google
-              </span>
+              <svg className="w-4 h-4 fill-current text-zinc-400 group-hover:text-zinc-200" viewBox="0 0 24 24">
+                <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.51 0-6.377-2.87-6.377-6.38s2.867-6.38 6.377-6.38c1.6 0 3.05.59 4.178 1.57l3.079-3.08C19.4 2.73 16.03 1.5 12.24 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.5 6.27 1.5 1.24s4.77 10.74 10.74 10.74c5.96 0 10.66-4.73 10.66-10.74 0-.64-.06-1.28-.18-1.9H12.24z"/>
+              </svg>
+              Sign In with Google
             </button>
           </div>
 
           <div className="pt-2 border-t border-zinc-800/60 relative z-10">
             <button
               onClick={() => setDismissAuthCard(true)}
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+              className="text-[10px] font-mono font-bold text-zinc-500 hover:text-zinc-300 transition cursor-pointer uppercase tracking-wider"
             >
               Continue Offline (Local Storage Cache)
             </button>
