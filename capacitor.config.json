@@ -8,8 +8,9 @@
   },
   "plugins": {
     "FirebaseAuthentication": {
-      "skipNativeAuth": true,
-      "providers": ["google.com"]
+      "skipNativeAuth": false,
+      "providers": ["google.com"],
+      "authDomain": "habitpulse-e849f.firebaseapp.com"
     }
   }
 }

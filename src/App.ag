@@ -65,7 +65,7 @@ export default function App() {
     return localStorage.getItem('uplife_penalty_active') === 'true';
   });
 
-  const [penaltyTimeLeft, setPenaltyTimeLeft] = useState(600); // 10 minutes (600s)
+  const [penaltyTimeLeft, setPenaltyTimeLeft] = useState(60); // 1 minute (60s)
 
   // Gate Dungeon & Shadow Army states
   const [gateRank, setGateRank] = useState('E');
@@ -327,7 +327,7 @@ export default function App() {
 
     if (completedCount === 0) {
       setIsPenaltyActive(true);
-      setPenaltyTimeLeft(600); // Reset timer
+      setPenaltyTimeLeft(60); // Reset timer
       localStorage.setItem('uplife_penalty_active', 'true');
       playSound('penalty');
     }
@@ -348,7 +348,7 @@ export default function App() {
           // Award survival XP bonus!
           setRpgBonusXp(x => x + 100);
           playSound('level-up');
-          return 600;
+          return 60;
         }
         return prev - 1;
       });
